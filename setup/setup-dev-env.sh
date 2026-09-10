@@ -7,7 +7,7 @@
 #
 # Installs: Docker Engine, kubectl, kind, and Python build prerequisites.
 # The rationale for every choice is documented in
-# docs/00-development-environment.md
+# setup/README.md
 #
 # The script is idempotent: it is safe to run more than once.
 #
