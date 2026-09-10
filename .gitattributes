@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------------------
+# Line endings
+#
+# The repository is authored on Linux (WSL2) but may be cloned on Windows.
+# Normalising to LF matters here beyond tidiness: a CR at the end of a shebang
+# line makes a container entrypoint fail inside a Linux image with an error
+# that points nowhere useful.
+# ---------------------------------------------------------------------------
+* text=auto eol=lf
+
+*.sh           text eol=lf
+*.py           text eol=lf
+*.yaml         text eol=lf
+*.yml          text eol=lf
+*.md           text eol=lf
+*.txt          text eol=lf
+*.json         text eol=lf
+Dockerfile     text eol=lf
+Dockerfile.*   text eol=lf
+Makefile       text eol=lf
+.dockerignore  text eol=lf
+
+# Windows-native helpers keep CRLF, if any are ever added.
+*.bat          text eol=crlf
+*.ps1          text eol=crlf
+
+# ---------------------------------------------------------------------------
+# Binary
+# ---------------------------------------------------------------------------
+*.pdf          binary
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.bin          binary
+*.enc          binary
+*.sig          binary
+*.safetensors  binary
+*.tar          binary
+*.gz           binary
+
+# ---------------------------------------------------------------------------
+# Language statistics: keep docs from skewing the repository language bar.
+# ---------------------------------------------------------------------------
+docs/**        linguist-documentation
