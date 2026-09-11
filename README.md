@@ -64,7 +64,11 @@ Step-by-step instructions, environment verification and troubleshooting are in *
 ├── setup/
 │   ├── README.md                  Environment setup, verification, troubleshooting
 │   └── setup-dev-env.sh           Idempotent installer for Ubuntu 24.04 / WSL2
-├── producer/                      (pending) Dockerfile and encryption/publish logic
+├── producer/
+│   ├── build_artifact.py          Fetch, re-serialize, pack and encrypt the model
+│   ├── Dockerfile                 Base pinned by digest, unprivileged runtime user
+│   ├── requirements.in            Direct dependencies
+│   └── requirements.lock          Full tree pinned by digest (--require-hashes)
 ├── consumer/                      (pending) Dockerfile and fetch/decrypt/load logic
 ├── manifests/                     (pending) Kubernetes Pod, Secret and supporting resources
 ├── .gitattributes

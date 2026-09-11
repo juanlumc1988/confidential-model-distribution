@@ -12,8 +12,8 @@
 # The script is idempotent: it is safe to run more than once.
 #
 # Usage:
-#   ./setup-dev-env.sh                  install tooling only
-#   ./setup-dev-env.sh --with-cluster   also create the kind cluster
+#   ./setup/setup-dev-env.sh                  install tooling only
+#   ./setup/setup-dev-env.sh --with-cluster   also create the kind cluster
 #
 # Environment overrides:
 #   CLUSTER_NAME   name of the kind cluster (default: confidential-ml)
@@ -79,7 +79,7 @@ if [ "$(ps -p 1 -o comm=)" != "systemd" ]; then
   echo
   warn "Restart this WSL distribution, then run the script again:"
   warn "  1. from Windows PowerShell:  wsl --shutdown"
-  warn "  2. reopen Ubuntu and re-run: ./setup-dev-env.sh"
+  warn "  2. reopen Ubuntu and re-run: ./setup/setup-dev-env.sh"
   exit 0
 fi
 info "systemd is running as PID 1."
@@ -226,7 +226,7 @@ echo
 echo "Next steps:"
 echo
 echo "  1. Keep the repository on the Linux filesystem, not under /mnt/c."
-echo "         mkdir -p ~/projects && cd ~/projects"
+echo "         it already is, if you cloned it as documented in setup/README.md"
 echo
 echo "  2. Create the cluster if it was not created above:"
 echo "         kind create cluster --name ${CLUSTER_NAME}"

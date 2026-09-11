@@ -91,3 +91,6 @@ transformers_cache/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Producer output
+out/
