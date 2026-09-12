@@ -1,0 +1,111 @@
+# Positive-and-negative test in one run: the real key, the real published
+# artifact, and a single flipped byte.
+#
+# This is the claim Layer 1 rests on once the happy path works. Running it
+# inside the cluster means the key is never read out of the Secret and never
+# appears in a terminal, a log or a shell history -- the pod has it mounted,
+# uses it, and exits.
+#
+# The intact artifact must decrypt. Every mutation must raise InvalidTag.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: consumer-tamper-check
+  namespace: default
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10002
+    runAsGroup: 10002
+    fsGroup: 10002
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: consumer
+      image: consumer:dev
+      imagePullPolicy: IfNotPresent
+      command: ["python", "-c"]
+      args:
+        - |
+          import sys
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          from cryptography.exceptions import InvalidTag
+          from artifact_format import associated_data, decrypt
+
+          REPO = "juanlumc1988/bert-tiny-encrypted"
+
+          key = Path("/etc/model-key/model.key").read_bytes()
+          blob = Path(hf_hub_download(repo_id=REPO, filename="artifact.enc",
+                                      repo_type="model")).read_bytes()
+          aad = associated_data(REPO)
+          print(f"key {len(key)} bytes, artifact {len(blob):,} bytes\n", flush=True)
+
+          def flip(data, i):
+              return data[:i] + bytes([data[i] ^ 0x01]) + data[i + 1:]
+
+          cases = [
+              ("intact",                 blob,                                  True),
+              ("byte flipped mid-file",  flip(blob, 9_000_000),                 False),
+              ("nonce altered",          flip(blob, 0),                         False),
+              ("tag altered",            flip(blob, len(blob) - 1),             False),
+              ("truncated by one byte",  blob[:-1],                             False),
+              ("one byte appended",      blob + b"\x00",                        False),
+          ]
+
+          ok = True
+          for name, data, should_decrypt in cases:
+              try:
+                  n = len(decrypt(data, key, aad))
+                  result, passed = f"decrypted {n:,} bytes", should_decrypt
+              except InvalidTag:
+                  result, passed = "REJECTED (InvalidTag)", not should_decrypt
+              except ValueError as exc:
+                  result, passed = f"REJECTED ({exc})", not should_decrypt
+              print(f"  {'PASS' if passed else 'FAIL'}  {name:24} -> {result}", flush=True)
+              ok = ok and passed
+
+          # The repository id is bound as associated data, so the same key and
+          # the same bytes must still fail under a different binding.
+          try:
+              decrypt(blob, key, associated_data("someone-else/another-repo"))
+              print("  FAIL  relocated to another repo -> decrypted"); ok = False
+          except InvalidTag:
+              print("  PASS  relocated to another repo -> REJECTED (InvalidTag)")
+
+          print()
+          print("all checks passed" if ok else "SOME CHECKS FAILED")
+          sys.exit(0 if ok else 1)
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      env:
+        - name: HF_HOME
+          value: /scratch/hf
+        - name: TMPDIR
+          value: /scratch/tmp
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+      volumeMounts:
+        - name: model-key
+          mountPath: /etc/model-key
+          readOnly: true
+        - name: scratch
+          mountPath: /scratch
+  volumes:
+    - name: model-key
+      secret:
+        secretName: model-decryption-key
+        defaultMode: 0440
+    - name: scratch
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi

@@ -27,21 +27,11 @@ Three decisions are visible in the code and worth stating here:
 from __future__ import annotations
 
 import io
-import os
 import tarfile
 import tempfile
 from pathlib import Path
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-# Bound into the AES-GCM associated data. Neither value is secret; binding them
-# means a ciphertext cannot be silently relocated to a different Hub repository,
-# or reinterpreted under a future revision of this format, without the tag
-# failing to verify.
-FORMAT_VERSION = b"cmd/v1"
-
-KEY_BYTES = 32  # AES-256
-NONCE_BYTES = 12  # GCM's native nonce size; no derivation or truncation needed
+from artifact_format import associated_data, decrypt, encrypt
 
 # Google's smallest published BERT, ~17 MB. `prajjwal1/bert-tiny` is the more
 # commonly cited tiny BERT and was the first choice, but its config.json
@@ -126,40 +116,6 @@ def build_tar(src: Path) -> bytes:
                 recursive=False,
             )
     return buf.getvalue()
-
-
-# ---------------------------------------------------------------------------
-# Encryption
-# ---------------------------------------------------------------------------
-
-
-def associated_data(hf_repo_id: str) -> bytes:
-    return FORMAT_VERSION + b"|" + hf_repo_id.encode("utf-8")
-
-
-def encrypt(plaintext: bytes, aad: bytes) -> tuple[bytes, bytes]:
-    """Encrypt ``plaintext`` under a freshly generated key.
-
-    Returns ``(key, blob)`` where ``blob`` is ``nonce || ciphertext || tag``.
-    The nonce travels with the ciphertext because it is not secret; the key
-    travels through the cluster because it is.
-
-    One key per artifact, so a nonce is never reused under the same key.
-
-    Limitation, deliberately not hidden: ``AESGCM.encrypt`` is a one-shot API
-    holding plaintext and ciphertext in memory at once. Fine for a model of
-    this size; a multi-gigabyte model would need chunked framing, with a chunk
-    index in the associated data to prevent reordering and truncation.
-    """
-    key = os.urandom(KEY_BYTES)
-    nonce = os.urandom(NONCE_BYTES)
-    return key, nonce + AESGCM(key).encrypt(nonce, plaintext, aad)
-
-
-def decrypt(blob: bytes, key: bytes, aad: bytes) -> bytes:
-    """Inverse of :func:`encrypt`. Used here only for the round-trip check."""
-    nonce, ciphertext = blob[:NONCE_BYTES], blob[NONCE_BYTES:]
-    return AESGCM(key).decrypt(nonce, ciphertext, aad)
 
 
 # ---------------------------------------------------------------------------

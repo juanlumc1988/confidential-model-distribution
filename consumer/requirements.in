@@ -1,0 +1,18 @@
+# Direct dependencies. Edit this file, then regenerate the lock:
+#
+#   uv pip compile --generate-hashes --output-file requirements.lock requirements.in
+#
+# See producer/requirements.in for why torch comes from a separate index and why
+# the lock is hashed. The same reasoning applies here.
+#
+# Note what is absent: the Kubernetes client. The consumer receives its key
+# through a mounted volume and never talks to the API server, so it needs no
+# ServiceAccount token and no RBAC at all.
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+transformers==5.17.0
+cryptography==50.0.1
+safetensors==0.8.0
+huggingface-hub==1.31.0
+torch==2.14.0+cpu
