@@ -9,7 +9,9 @@
 # torch comes from PyTorch's CPU-only index: the default PyPI wheel bundles the
 # CUDA runtime and would add roughly two gigabytes for a workload with no GPU.
 # The index has to be repeated on the pip install line, since the lock does not
-# record it.
+# record it. That flag makes pip search both indexes, which is the classic
+# dependency-confusion exposure -- neutralised here only because the lock is
+# hashed and a substituted package fails its digest check.
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 
@@ -17,3 +19,8 @@ transformers==5.17.0
 cryptography==50.0.1
 safetensors==0.8.0
 torch==2.14.0+cpu
+
+# Publishing: upload the artifact to the Hub, and write the key straight into a
+# Kubernetes Secret through the API rather than via a shell.
+huggingface-hub==1.31.0
+kubernetes

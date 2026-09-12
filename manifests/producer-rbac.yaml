@@ -1,0 +1,43 @@
+# Least privilege for the producer Job.
+#
+# The producer writes the decryption key into a Secret through the Kubernetes
+# API, so it needs permission to do exactly that and nothing more.
+#
+# Note what is absent: `get`, `list` and `watch`. The producer never reads
+# secrets back, and reading is the permission worth withholding -- a compromised
+# producer with `get secrets` could exfiltrate every credential in the
+# namespace, while one limited to `create` and `update` can only overwrite the
+# key it generated itself.
+#
+# Existence is probed by attempting the create and catching the 409 conflict,
+# which is what lets `get` stay off this list.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: producer
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: producer-secret-writer
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: producer-secret-writer
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: producer
+    namespace: default
+roleRef:
+  kind: Role
+  name: producer-secret-writer
+  apiGroup: rbac.authorization.k8s.io

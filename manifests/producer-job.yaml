@@ -1,0 +1,71 @@
+# The producer, run once as a Job.
+#
+# Prerequisites:
+#   1. The image is loaded into the kind cluster:
+#        kind load docker-image producer:dev --name confidential-ml
+#   2. The Hugging Face write token exists as a Secret. It is a personal
+#      credential, so the pipeline does not create it -- you do:
+#        kubectl create secret generic hf-token --from-literal=token=hf_xxx
+#
+# On success the Job leaves behind a Secret named `model-decryption-key`
+# holding the key, and an `artifact.enc` published to the Hub.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: producer
+  namespace: default
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      name: producer
+    spec:
+      restartPolicy: Never
+      serviceAccountName: producer
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: producer
+          image: producer:dev
+          # The image is side-loaded into the cluster rather than pulled from a
+          # registry, so a pull would fail: there is no registry holding it.
+          imagePullPolicy: IfNotPresent
+          args:
+            - --hf-repo-id
+            - juanlumc1988/bert-tiny-encrypted
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            # Hugging Face caches downloads here. It has to be a writable path,
+            # and the root filesystem is read-only.
+            - name: HF_HOME
+              value: /tmp/hf
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 3Gi
+          volumeMounts:
+            - name: scratch
+              mountPath: /tmp
+      volumes:
+        # Scratch space for the model download and the temporary directory the
+        # producer packs from. Deliberately not backed by the node's disk: the
+        # plaintext model exists here briefly, and tmpfs keeps it in RAM.
+        - name: scratch
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi

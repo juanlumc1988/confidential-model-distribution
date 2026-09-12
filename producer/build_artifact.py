@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 """Build the encrypted model artifact.
-
-First stage of the producer:
 
     Hugging Face model  ->  safetensors  ->  deterministic tar  ->  AES-256-GCM
 
-Publishing to the Hub and storing the key as a Kubernetes Secret are a later
-stage. This module stops once the ciphertext and the key exist on disk, so the
-encryption step can be exercised and verified on its own.
+A library module with no entry point of its own: :func:`build` returns the key
+and the ciphertext in memory and writes nothing outside a temporary directory
+it cleans up. Whether the key is ever put on a filesystem is the caller's
+decision, and in the deployed path it is not -- see ``main.py``.
 
 Three decisions are visible in the code and worth stating here:
 
@@ -28,11 +26,8 @@ Three decisions are visible in the code and worth stating here:
 
 from __future__ import annotations
 
-import argparse
-import base64
 import io
 import os
-import sys
 import tarfile
 import tempfile
 from pathlib import Path
@@ -168,45 +163,21 @@ def decrypt(blob: bytes, key: bytes, aad: bytes) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Composition
 # ---------------------------------------------------------------------------
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Encrypt a Hugging Face model into a single artifact.",
-    )
-    parser.add_argument(
-        "--model-id",
-        default=os.environ.get("MODEL_ID", DEFAULT_MODEL_ID),
-        help=f"source model on the Hub (default: {DEFAULT_MODEL_ID})",
-    )
-    parser.add_argument(
-        "--hf-repo-id",
-        default=os.environ.get("HF_REPO_ID"),
-        required="HF_REPO_ID" not in os.environ,
-        help="destination repository, bound into the artifact as associated data",
-    )
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        default=Path(os.environ.get("OUT_DIR", "./out")),
-        help="where to write artifact.enc and model.key (default: ./out)",
-    )
-    parser.add_argument(
-        "--skip-self-check",
-        action="store_true",
-        help="skip the decrypt-and-compare round trip (not recommended)",
-    )
-    return parser.parse_args(argv)
+def build(model_id: str, hf_repo_id: str, self_check: bool = True) -> tuple[bytes, bytes]:
+    """Fetch, normalise, pack and encrypt ``model_id``.
 
-
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    aad = associated_data(args.hf_repo_id)
+    Returns ``(key, blob)``. Nothing touches the filesystem outside a temporary
+    directory that is removed before returning, so the caller decides whether
+    the key is ever written down.
+    """
+    aad = associated_data(hf_repo_id)
 
     with tempfile.TemporaryDirectory(prefix="producer-") as tmp:
-        model_dir = fetch_and_normalise(args.model_id, Path(tmp) / "model")
+        model_dir = fetch_and_normalise(model_id, Path(tmp) / "model")
 
         log("Packing into a deterministic tar")
         plaintext = build_tar(model_dir)
@@ -214,27 +185,11 @@ def main(argv: list[str] | None = None) -> int:
         log(f"Encrypting {len(plaintext):,} bytes with AES-256-GCM")
         key, blob = encrypt(plaintext, aad)
 
-    if not args.skip_self_check:
-        log("Verifying round trip")
-        if decrypt(blob, key, aad) != plaintext:
-            raise RuntimeError("round trip mismatch; refusing to emit the artifact")
+        if self_check:
+            log("Verifying round trip")
+            if decrypt(blob, key, aad) != plaintext:
+                raise RuntimeError(
+                    "round trip mismatch; refusing to emit the artifact"
+                )
 
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = args.out_dir / "artifact.enc"
-    key_path = args.out_dir / "model.key"
-
-    artifact_path.write_bytes(blob)
-
-    # The key is written through a file descriptor opened 0600 rather than
-    # written and then chmod-ed, so it is never briefly world-readable.
-    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "wb") as handle:
-        handle.write(base64.b64encode(key))
-
-    log(f"Artifact: {artifact_path} ({len(blob):,} bytes)")
-    log(f"Key:      {key_path} (base64, mode 0600 -- do not commit)")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    return key, blob
