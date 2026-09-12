@@ -1,0 +1,19 @@
+# Direct dependencies. Edit this file, then regenerate the lock:
+#
+#   uv pip compile --generate-hashes --output-file requirements.lock requirements.in
+#
+# requirements.lock is what the image installs, with --require-hashes, so every
+# transitive dependency is pinned to a known digest. A package that is re-uploaded
+# or tampered with between builds fails the install rather than entering the image.
+#
+# torch comes from PyTorch's CPU-only index: the default PyPI wheel bundles the
+# CUDA runtime and would add roughly two gigabytes for a workload with no GPU.
+# The index has to be repeated on the pip install line, since the lock does not
+# record it.
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+transformers==5.17.0
+cryptography==50.0.1
+safetensors==0.8.0
+torch==2.14.0+cpu
