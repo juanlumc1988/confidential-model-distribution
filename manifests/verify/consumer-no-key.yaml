@@ -1,0 +1,49 @@
+# Negative test: the consumer with no key mounted.
+#
+# Identical to manifests/consumer-pod.yaml except that the Secret volume is
+# absent. The consumer must exit non-zero *before downloading anything*: the
+# key is read first precisely so that this case is cheap.
+#
+# A consumer that started the download, or that fell back to some other
+# behaviour, would mean the pipeline does not actually depend on the key.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: consumer-no-key
+  namespace: default
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10002
+    runAsGroup: 10002
+    fsGroup: 10002
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: consumer
+      image: consumer:dev
+      imagePullPolicy: IfNotPresent
+      args:
+        - --hf-repo-id
+        - juanlumc1988/bert-tiny-encrypted
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+      volumeMounts:
+        - name: scratch
+          mountPath: /scratch
+  volumes:
+    - name: scratch
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi

@@ -2,7 +2,7 @@
 
 A proof of concept for a confidential ML model delivery pipeline. A **producer** encrypts an open model and publishes the ciphertext to the Hugging Face Hub. A **consumer**, running as a pod in Kubernetes, downloads the artifact, decrypts it with a key mounted from a Kubernetes Secret, and loads the model.
 
-> **Status: work in progress.** The development environment is complete and documented. Layer 1 is under construction. Sections marked _pending_ are filled in as the implementation lands.
+> **Status: Layer 1 complete and verified end to end.** The producer publishes, the consumer decrypts and loads, and the pipeline demonstrably fails closed without the key, with the wrong key, and against a tampered artifact. Layers 2 and 3 are out of scope by choice — see below.
 
 ---
 
@@ -64,13 +64,30 @@ Step-by-step instructions, environment verification and troubleshooting are in *
 ├── setup/
 │   ├── README.md                  Environment setup, verification, troubleshooting
 │   └── setup-dev-env.sh           Idempotent installer for Ubuntu 24.04 / WSL2
+├── shared/
+│   └── artifact_format.py         The wire format, defined once for both sides
 ├── producer/
-│   ├── build_artifact.py          Fetch, re-serialize, pack and encrypt the model
+│   ├── build_artifact.py          Fetch, re-serialize, pack and encrypt
+│   ├── publish.py                 Upload to the Hub, write the key to a Secret
+│   ├── main.py                    Entry point
+│   ├── model_card.md              README published to the Hub repository
 │   ├── Dockerfile                 Base pinned by digest, unprivileged runtime user
 │   ├── requirements.in            Direct dependencies
 │   └── requirements.lock          Full tree pinned by digest (--require-hashes)
-├── consumer/                      (pending) Dockerfile and fetch/decrypt/load logic
-├── manifests/                     (pending) Kubernetes Pod, Secret and supporting resources
+├── consumer/
+│   ├── consume.py                 Download, authenticate, decrypt, load
+│   ├── Dockerfile
+│   ├── requirements.in
+│   └── requirements.lock
+├── manifests/
+│   ├── producer-rbac.yaml         ServiceAccount, Role, RoleBinding
+│   ├── producer-job.yaml          The producer, run once
+│   ├── consumer-pod.yaml          The consumer, key mounted from the Secret
+│   └── verify/
+│       ├── consumer-no-key.yaml       Must fail before downloading
+│       ├── consumer-wrong-key.yaml    Must fail at authentication
+│       └── consumer-tamper-check.yaml Intact decrypts, every mutation rejected
+├── .dockerignore
 ├── .gitattributes
 ├── .gitignore
 ├── LICENSE
@@ -81,17 +98,25 @@ Step-by-step instructions, environment verification and troubleshooting are in *
 
 ## Build
 
+Both images are built **from the repository root**, with `-f`, so that they can
+copy `shared/` in. The wire format lives there and both sides must agree on it
+byte for byte; a disagreement would surface as `InvalidTag`, indistinguishable
+from tampering.
+
 ```bash
-docker build -t producer:dev producer/
-kind load docker-image producer:dev --name confidential-ml
+docker build -t producer:dev -f producer/Dockerfile .
+docker build -t consumer:dev -f consumer/Dockerfile .
 ```
 
-The second command is not optional. A kind node is a Docker container with its
-own image store, separate from the daemon that built the image; without it the
-kubelet cannot see `producer:dev` and tries to pull it from a registry that does
-not have it. This is also why the manifests set `imagePullPolicy: IfNotPresent`.
+```bash
+kind load docker-image producer:dev --name confidential-ml
+kind load docker-image consumer:dev --name confidential-ml
+```
 
-_Consumer image: pending._
+`kind load` is not optional. A kind node is a Docker container with its own
+image store, separate from the daemon that built the image; without it the
+kubelet cannot see the image and tries to pull it from a registry that does not
+have it. This is also why the manifests set `imagePullPolicy: IfNotPresent`.
 
 ## Deploy
 
@@ -115,7 +140,15 @@ The Job publishes `artifact.enc` to the Hub and leaves the decryption key in a
 Secret named `model-decryption-key`. To run it again, delete the Job first: a
 completed Job is not re-executed by `apply`.
 
-_Consumer deployment: pending._
+Then the consumer:
+
+```bash
+kubectl apply -f manifests/consumer-pod.yaml
+kubectl logs -f pod/consumer
+```
+
+It runs to completion in about twenty seconds and ends in `Completed`. To run it
+again, delete the pod first — a Pod's spec is immutable.
 
 ## Verify the pipeline
 
@@ -146,12 +179,86 @@ secrets back, which is the permission worth withholding.
 curl -sL https://huggingface.co/juanlumc1988/bert-tiny-encrypted/resolve/main/artifact.enc | head -c 32 | xxd
 ```
 
-**The cipher rejects tampering.** Verified during development: one flipped byte
-in the ciphertext, or the correct key with a different repository id in the
-associated data, both fail with `InvalidTag`.
+**The pipeline works end to end.** The consumer's own output is the evidence:
 
-_Consumer verification — failing closed without the key, loading successfully
-with it: pending._
+```
+==> Read a 256-bit key from /etc/model-key/model.key
+==> Downloading artifact.enc from juanlumc1988/bert-tiny-encrypted
+Warning: You are sending unauthenticated requests to the HF Hub.
+==> Artifact is 18,268,188 bytes
+==> Authenticated and decrypted to 18,268,160 bytes
+==> Extracted to /scratch/model (tmpfs -- the node's disk never sees it)
+==> Loaded bert with 4,385,920 parameters
+==> Forward pass produced (1, 5, 128)
+```
+
+Two of those lines carry the argument. The **warning** is not a defect: the
+consumer downloads with no Hugging Face credential at all, because the artifact
+is public and the only secret in the system is the key. The **forward pass**
+means the weights actually work, rather than that a directory happened to parse.
+
+### Failing closed
+
+Working is half the claim. The other half is that it fails when it should, and
+the three manifests under `manifests/verify/` demonstrate it.
+
+**Without the key**, the consumer exits before it downloads anything:
+
+```bash
+kubectl apply -f manifests/verify/consumer-no-key.yaml
+kubectl logs pod/consumer-no-key
+```
+
+```
+[x] no decryption key at /etc/model-key/model.key. The Secret is not mounted,
+    so there is nothing to decrypt with. Refusing to continue.
+```
+
+`Failed`, exit 1, and no download line — the key is read first precisely so this
+case is cheap.
+
+**With a valid but wrong key**, it fails at authentication, before unpacking:
+
+```bash
+head -c 32 /dev/urandom > /tmp/wrong.key
+kubectl create secret generic wrong-model-key --from-file=model.key=/tmp/wrong.key
+shred -u /tmp/wrong.key
+kubectl apply -f manifests/verify/consumer-wrong-key.yaml
+kubectl logs pod/consumer-wrong-key
+```
+
+```
+[x] authentication failed. The artifact, the key or the repository binding
+    do not match. Nothing has been unpacked.
+```
+
+**With the correct key and a tampered artifact**, every mutation is rejected.
+This one runs inside the cluster so the key is never read out of the Secret:
+
+```bash
+kubectl apply -f manifests/verify/consumer-tamper-check.yaml
+kubectl logs pod/consumer-tamper-check
+```
+
+```
+  PASS  intact                   -> decrypted 18,268,160 bytes
+  PASS  byte flipped mid-file    -> REJECTED (InvalidTag)
+  PASS  nonce altered            -> REJECTED (InvalidTag)
+  PASS  tag altered              -> REJECTED (InvalidTag)
+  PASS  truncated by one byte    -> REJECTED (InvalidTag)
+  PASS  one byte appended        -> REJECTED (InvalidTag)
+  PASS  relocated to another repo -> REJECTED (InvalidTag)
+```
+
+The last case is the associated-data binding: the same key and the same bytes
+still fail under a different repository id, so a published artifact cannot be
+silently relocated.
+
+Clean up afterwards:
+
+```bash
+kubectl delete -f manifests/verify/ && kubectl delete secret wrong-model-key
+```
 
 ---
 

@@ -1,0 +1,65 @@
+# Negative test: the consumer with a valid but incorrect key.
+#
+# Identical to manifests/consumer-pod.yaml except that the mounted Secret is
+# `wrong-model-key`, holding 32 random bytes. Create it first:
+#
+#   head -c 32 /dev/urandom > /tmp/wrong.key
+#   kubectl create secret generic wrong-model-key --from-file=model.key=/tmp/wrong.key
+#   shred -u /tmp/wrong.key
+#
+# The key is the right length and the right shape, so it passes every check
+# the consumer can make locally. It fails at authentication, which is the
+# point: only the cipher can tell, and it does so *before* anything is
+# unpacked or loaded.
+#
+# This exercises the same code path as a tampered artifact. AES-GCM cannot
+# distinguish "wrong key" from "modified ciphertext" from "mismatched
+# associated data" -- all three produce InvalidTag, and all three are fatal.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: consumer-wrong-key
+  namespace: default
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10002
+    runAsGroup: 10002
+    fsGroup: 10002
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: consumer
+      image: consumer:dev
+      imagePullPolicy: IfNotPresent
+      args:
+        - --hf-repo-id
+        - juanlumc1988/bert-tiny-encrypted
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+      volumeMounts:
+        - name: model-key
+          mountPath: /etc/model-key
+          readOnly: true
+        - name: scratch
+          mountPath: /scratch
+  volumes:
+    - name: model-key
+      secret:
+        secretName: wrong-model-key
+        defaultMode: 0440
+    - name: scratch
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi

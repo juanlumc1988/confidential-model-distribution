@@ -1,3 +1,6 @@
+# Built from the repository root so that shared/ can be copied in:
+#   docker build -t producer:dev -f producer/Dockerfile .
+#
 # Base image pinned by digest, not by tag: a tag is mutable and can be
 # repointed at different content, which would silently change what this
 # pipeline runs. The digest is the content.
@@ -7,6 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app/shared \
     HF_HOME=/tmp/hf
 
 WORKDIR /app
@@ -18,13 +22,16 @@ WORKDIR /app
 #
 # The extra index is repeated here because the lock file does not record it.
 # It supplies the CPU-only torch build; the default PyPI wheel bundles the CUDA
-# runtime and would add roughly two gigabytes for a workload with no GPU.
-COPY requirements.lock .
+# runtime and would add roughly two gigabytes for a workload with no GPU. That
+# flag makes pip search both indexes, which is the classic dependency-confusion
+# exposure -- neutralised only because the lock is hashed.
+COPY producer/requirements.lock .
 RUN pip install --require-hashes \
       --extra-index-url https://download.pytorch.org/whl/cpu \
       -r requirements.lock
 
-COPY build_artifact.py publish.py main.py model_card.md ./
+COPY shared/ ./shared/
+COPY producer/build_artifact.py producer/publish.py producer/main.py producer/model_card.md ./
 
 # Unprivileged by default. /app stays root-owned and read-only to the runtime
 # user; /out exists for the development flow that asks for local copies, and

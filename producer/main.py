@@ -16,7 +16,6 @@ writes the key to disk, and says so.
 from __future__ import annotations
 
 import argparse
-import base64
 import os
 import sys
 from pathlib import Path
@@ -80,12 +79,19 @@ def write_local(out_dir: Path, blob: bytes, key: bytes) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "artifact.enc").write_bytes(blob)
 
+    # Raw bytes, not base64. The consumer reads its key from a mounted Secret,
+    # where the kubelet has already decoded it, so `model.key` means the raw
+    # key there. Writing a different encoding under the same filename here
+    # would make the local flow and the deployed flow disagree about what the
+    # file is -- exactly the kind of drift the shared format module exists to
+    # prevent elsewhere.
+    #
     # Opened 0600 rather than written and then chmod-ed: between those two
     # calls the file would briefly exist with default permissions.
     key_path = out_dir / "model.key"
     fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "wb") as handle:
-        handle.write(base64.b64encode(key))
+        handle.write(key)
 
     log(f"Wrote {out_dir}/artifact.enc")
     log(f"Wrote {key_path} -- key material on disk, delete it when done")

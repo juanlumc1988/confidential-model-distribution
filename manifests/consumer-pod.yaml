@@ -1,0 +1,82 @@
+# The consumer.
+#
+# Prerequisites:
+#   1. The producer has run, so `model-decryption-key` exists and the artifact
+#      is published.
+#   2. The image is loaded into the kind cluster:
+#        kind load docker-image consumer:dev --name confidential-ml
+#
+# Note what this pod does NOT have: a ServiceAccount with any permissions, a
+# Hugging Face token, or write access to any disk-backed volume. It receives
+# the key through a mounted Secret and the artifact over the public internet.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: consumer
+  namespace: default
+spec:
+  restartPolicy: Never
+  # Opt out of the API credential the kubelet would otherwise mount. The
+  # consumer never talks to the API server, so a token in its filesystem would
+  # be a credential available to an attacker for no operational reason.
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10002
+    runAsGroup: 10002
+    # Secret volumes are mounted owned by root. Without fsGroup the kubelet
+    # leaves group ownership as root too, and a mode that excludes "other"
+    # would lock out the very process meant to read the key. fsGroup makes the
+    # kubelet chgrp the volume to this gid, which is what lets the key be
+    # readable by the container and by nothing else.
+    fsGroup: 10002
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: consumer
+      image: consumer:dev
+      imagePullPolicy: IfNotPresent
+      args:
+        - --hf-repo-id
+        - juanlumc1988/bert-tiny-encrypted
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          memory: 3Gi
+      volumeMounts:
+        - name: model-key
+          mountPath: /etc/model-key
+          readOnly: true
+        - name: scratch
+          mountPath: /scratch
+  volumes:
+    # The key, as a file rather than an environment variable: environment
+    # variables are inherited by every child process and surface in crash
+    # dumps, while a mount is scoped to a path and a mode.
+    #
+    # 0440 with the fsGroup above: readable by root and by the container's
+    # group, and by nobody else. 0400 looks tighter and is wrong -- the file is
+    # owned by root, so it would exclude the container itself.
+    - name: model-key
+      secret:
+        secretName: model-decryption-key
+        defaultMode: 0440
+    # Where the artifact is downloaded and the model decrypted. `medium:
+    # Memory` makes this a tmpfs: the plaintext model exists only in RAM and
+    # the node's disk never sees it. Combined with readOnlyRootFilesystem,
+    # this is the only writable path in the container, so the plaintext cannot
+    # end up anywhere else by accident.
+    #
+    # sizeLimit is charged against the container's memory limit, which is why
+    # the limit above is comfortably larger than the model.
+    - name: scratch
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi

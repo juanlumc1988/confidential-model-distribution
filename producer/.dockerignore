@@ -1,6 +1,0 @@
-out/
-__pycache__/
-*.pyc
-*.enc
-*.key
-.venv/

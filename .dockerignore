@@ -1,0 +1,30 @@
+# Both images are built from the repository root so they can copy shared/ in.
+# That makes this file the one that matters: Docker only honours a
+# .dockerignore at the root of the build context, so any per-directory one is
+# silently ignored.
+#
+# Keeping `out/` out is not a size optimisation. It holds real key material
+# from local runs, and everything in the build context is uploaded to the
+# Docker daemon whether or not a COPY ever references it.
+out/
+*.enc
+*.key
+*.pem
+
+.git/
+.github/
+docs/
+setup/
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.vscode/
+.idea/
+*.swp
+.DS_Store
