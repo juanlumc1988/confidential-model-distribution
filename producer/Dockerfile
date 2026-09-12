@@ -24,15 +24,15 @@ RUN pip install --require-hashes \
       --extra-index-url https://download.pytorch.org/whl/cpu \
       -r requirements.lock
 
-COPY build_artifact.py .
+COPY build_artifact.py publish.py main.py model_card.md ./
 
 # Unprivileged by default. /app stays root-owned and read-only to the runtime
-# user, so the default output directory is /out rather than ./out: writing
-# under the working directory would fail as uid 10001, and it would fail only
-# after the model had been fetched, packed and encrypted.
+# user; /out exists for the development flow that asks for local copies, and
+# is writable by that user. OUT_DIR is deliberately *not* set: the deployed
+# path keeps the key in memory and hands it to the Kubernetes API directly,
+# and writing it to disk has to be asked for explicitly with --out-dir.
 RUN useradd --create-home --uid 10001 producer \
  && install -d -o 10001 -g 10001 /out
-ENV OUT_DIR=/out
 USER 10001
 
-ENTRYPOINT ["python", "build_artifact.py"]
+ENTRYPOINT ["python", "main.py"]

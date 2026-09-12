@@ -81,15 +81,77 @@ Step-by-step instructions, environment verification and troubleshooting are in *
 
 ## Build
 
-_Pending._ Will cover building the producer and consumer images and loading them into the kind cluster with `kind load docker-image` — necessary because kind nodes maintain their own image store, and locally built images are otherwise invisible to the cluster.
+```bash
+docker build -t producer:dev producer/
+kind load docker-image producer:dev --name confidential-ml
+```
+
+The second command is not optional. A kind node is a Docker container with its
+own image store, separate from the daemon that built the image; without it the
+kubelet cannot see `producer:dev` and tries to pull it from a registry that does
+not have it. This is also why the manifests set `imagePullPolicy: IfNotPresent`.
+
+_Consumer image: pending._
 
 ## Deploy
 
-_Pending._ Will cover creating the Secret, running the producer, and deploying the consumer pod.
+The Hugging Face token is a personal credential, so the pipeline does not create
+it — you do. The leading space keeps it out of shell history:
+
+```bash
+ kubectl create secret generic hf-token --from-literal=token=hf_...
+```
+
+Then the producer, RBAC first so the ServiceAccount exists before the pod needs
+it:
+
+```bash
+kubectl apply -f manifests/producer-rbac.yaml
+kubectl apply -f manifests/producer-job.yaml
+kubectl logs -f job/producer
+```
+
+The Job publishes `artifact.enc` to the Hub and leaves the decryption key in a
+Secret named `model-decryption-key`. To run it again, delete the Job first: a
+completed Job is not re-executed by `apply`.
+
+_Consumer deployment: pending._
 
 ## Verify the pipeline
 
-_Pending._ Will cover how to confirm each step independently: that the published artifact is genuinely opaque, that the consumer fails as expected without the key, and that the model loads successfully with it.
+**The key reached the cluster at the right length.** Prints a length, not a key:
+
+```bash
+kubectl get secret model-decryption-key -o jsonpath='{.data.model\.key}' | base64 -d | wc -c
+```
+
+Expect `32` — an AES-256 key.
+
+**The producer is actually constrained.** `kubectl auth can-i` evaluates the
+real authorisation chain rather than trusting the manifest:
+
+```bash
+kubectl auth can-i create secrets --as=system:serviceaccount:default:producer   # yes
+kubectl auth can-i update secrets --as=system:serviceaccount:default:producer   # yes
+kubectl auth can-i get    secrets --as=system:serviceaccount:default:producer   # no
+kubectl auth can-i list   secrets --as=system:serviceaccount:default:producer   # no
+```
+
+Those two `yes` answers are its only capabilities in the cluster. It cannot read
+secrets back, which is the permission worth withholding.
+
+**The artifact is opaque.** It is public, so anyone can check:
+
+```bash
+curl -sL https://huggingface.co/juanlumc1988/bert-tiny-encrypted/resolve/main/artifact.enc | head -c 32 | xxd
+```
+
+**The cipher rejects tampering.** Verified during development: one flipped byte
+in the ciphertext, or the correct key with a different repository id in the
+associated data, both fail with `InvalidTag`.
+
+_Consumer verification — failing closed without the key, loading successfully
+with it: pending._
 
 ---
 
