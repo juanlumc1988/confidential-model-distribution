@@ -12,11 +12,11 @@ The assignment is structured in three progressive layers. Only the first is requ
 
 | Layer | Description | Status |
 | --- | --- | --- |
-| **1** | Encrypted model distribution in Kubernetes | **In scope** — in progress |
+| **1** | Encrypted model distribution in Kubernetes | **In scope** — complete |
 | 2 | Model signing and verification | Optional — out of scope |
 | 3 | Attested key release via Kata + Confidential Containers | Optional — out of scope |
 
-Layers 2 and 3 are deliberately excluded rather than merely unfinished. A solid, well-understood Layer 1 was preferred over a partial attempt at all three; the reasoning is set out in the accompanying design document.
+Layers 2 and 3 are deliberately excluded rather than merely unfinished. A solid, well-understood Layer 1 was preferred over a partial attempt at all three. [Known limitations](#known-limitations) states what that leaves open, and which layer would close each gap.
 
 ---
 
@@ -271,9 +271,20 @@ kubectl delete -f manifests/verify/ && kubectl delete secret wrong-model-key
 
 ## Design decisions
 
-Every significant choice — host platform, container runtime, Kubernetes distribution, implementation language, artifact format, cipher and mode — is recorded with its rationale and the alternatives that were rejected, since the assignment asks for decisions to be defensible rather than merely present.
+The choices that shape the pipeline, each with the reason it won and the
+alternative it beat. Comments in the code and the manifests carry the
+finer-grained reasoning at the point where it applies.
 
-That record is delivered as a separate document alongside this repository.
+| Decision | Why | Rejected |
+| --- | --- | --- |
+| AES-256-GCM | With signing out of scope, the authentication tag is the only integrity control | ChaCha20-Poly1305, Fernet, AES-CBC with HMAC |
+| One deterministic tar, encrypted once | One integrity boundary; only the total size leaks | Per-file encryption |
+| Re-serialise the model to safetensors | Loading a pickle checkpoint executes code | Publishing the upstream `.bin` |
+| Public Hub repository | Shows confidentiality comes from the key, not from access control | Private repository |
+| Producer as a Job, Role limited to `create` and `update` | Least privilege, checkable with `kubectl auth can-i` | Local script piping the key into `kubectl` |
+| Plaintext only in a tmpfs `emptyDir` | The node's disk never sees the decrypted model | Default disk-backed `emptyDir` |
+| Dependencies locked by hash | A re-uploaded or tampered package fails the build | Version pins only |
+| Python | Reference client for the Hub, and the library that loads the model | Go, Rust |
 
 ---
 
