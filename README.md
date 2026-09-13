@@ -202,11 +202,17 @@ means the weights actually work, rather than that a directory happened to parse.
 Working is half the claim. The other half is that it fails when it should, and
 the three manifests under `manifests/verify/` demonstrate it.
 
+Each check **waits for the pod to finish before reading its log**. A pod that
+downloads the artifact takes a few seconds, and `kubectl logs` on its own prints
+whatever exists at that instant — which can stop short of the verdict and look
+like a pass. The wait is also the assertion: waiting for `Failed` times out if
+the pod succeeds instead, so the `&&` never runs.
+
 **Without the key**, the consumer exits before it downloads anything:
 
 ```bash
 kubectl apply -f manifests/verify/consumer-no-key.yaml
-kubectl logs pod/consumer-no-key
+kubectl wait --for=jsonpath='{.status.phase}'=Failed pod/consumer-no-key --timeout=180s && kubectl logs pod/consumer-no-key
 ```
 
 ```
@@ -224,7 +230,7 @@ head -c 32 /dev/urandom > /tmp/wrong.key
 kubectl create secret generic wrong-model-key --from-file=model.key=/tmp/wrong.key
 shred -u /tmp/wrong.key
 kubectl apply -f manifests/verify/consumer-wrong-key.yaml
-kubectl logs pod/consumer-wrong-key
+kubectl wait --for=jsonpath='{.status.phase}'=Failed pod/consumer-wrong-key --timeout=180s && kubectl logs pod/consumer-wrong-key
 ```
 
 ```
@@ -233,11 +239,12 @@ kubectl logs pod/consumer-wrong-key
 ```
 
 **With the correct key and a tampered artifact**, every mutation is rejected.
-This one runs inside the cluster so the key is never read out of the Secret:
+This one runs inside the cluster so the key is never read out of the Secret.
+It is the one check expected to succeed, so it waits for `Succeeded`:
 
 ```bash
 kubectl apply -f manifests/verify/consumer-tamper-check.yaml
-kubectl logs pod/consumer-tamper-check
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/consumer-tamper-check --timeout=180s && kubectl logs pod/consumer-tamper-check
 ```
 
 ```

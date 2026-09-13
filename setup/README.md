@@ -95,6 +95,11 @@ kind get clusters
 
 A `Ready` node and a cluster named `confidential-ml` mean the environment is complete.
 
+## Next
+
+The environment is ready. Return to the main README and continue with
+**[Build](../README.md#build)**, then Deploy, then Verify the pipeline.
+
 ---
 
 ## Troubleshooting
