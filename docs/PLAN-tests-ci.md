@@ -34,7 +34,7 @@ Formato: `nonce(12) || ciphertext || tag(16)`. **No hay cabecera**: `FORMAT_VERS
 
 ### `consumer/consume.py`
 - `read_key`: acepta 32 bytes crudos, **incluidos los que empiezan o acaban en `0x0a`/`0x20`** (no hace `.strip()`, y es deliberado); `ValueError` con 0, 31 o 33 bytes; `FileNotFoundError` si no existe.
-- `extract` (`filter="data"`): rechaza `../`, rutas absolutas, symlinks que salen del destino y ficheros de dispositivo (`tarfile.FilterError`); extrae bien un tar generado por `build_tar`.
+- `extract` (`filter="data"`): rechaza `../`, symlinks que salen del destino y ficheros de dispositivo (`tarfile.FilterError`); extrae bien un tar generado por `build_tar`. **Corrección (verificado al implementar):** las rutas absolutas **no** se rechazan; el filtro quita la `/` inicial y las extrae dentro del destino, que es seguro. El test comprueba ese confinamiento.
 - `main` (con `download_artifact` y `load_model` mockeados) devuelve 1 en estos casos: sin clave, clave con longitud incorrecta, fallo de descarga, `InvalidTag` y artefacto corto. Con artefacto válido devuelve 0. En los casos de fallo hay que comprobar además que no se ha extraído nada en `work_dir/model`.
 
 ### Requisitos

@@ -1,0 +1,18 @@
+# Test-only dependencies. Edit this file, then regenerate the lock from the
+# repository root:
+#
+#   uv pip compile --generate-hashes --output-file requirements-dev.lock requirements-dev.in
+#
+# Install with hashes enforced, as the images do:
+#
+#   pip install --require-hashes -r requirements-dev.lock
+#
+# cryptography is pinned to the version in both image locks, so the tests
+# exercise the same AES-GCM implementation the producer and consumer run.
+# torch, transformers, huggingface_hub and kubernetes are absent on purpose:
+# they are imported inside the functions that use them, and the unit tests
+# stub those functions instead.
+
+cryptography==50.0.1
+pytest
+pytest-cov
