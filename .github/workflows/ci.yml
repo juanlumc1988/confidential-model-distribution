@@ -50,17 +50,43 @@ jobs:
           --cov-fail-under=90
 
   lock-check:
-    # requirements-dev.lock must be exactly what its .in resolves to. The image
-    # locks are verified by docker-build: pip --require-hashes rejects them if
-    # anything is missing or altered.
+    # Every lock must be exactly what its requirements.in resolves to, so a
+    # hand edit or a forgotten regeneration fails here. Each lock is rebuilt
+    # with the command recorded in its own header: uv writes that command
+    # into the file, so adding a flag would show up as a diff. The target
+    # Python comes from UV_PYTHON instead, which uv does not record.
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dir: .
+            lock: requirements-dev.lock
+            compile: >-
+              uv pip compile --python-version 3.12 --generate-hashes
+              --output-file requirements-dev.lock requirements-dev.in
+          - dir: producer
+            lock: requirements.lock
+            compile: >-
+              uv pip compile --generate-hashes
+              --output-file requirements.lock requirements.in
+          - dir: consumer
+            lock: requirements.lock
+            compile: >-
+              uv pip compile --generate-hashes
+              --output-file requirements.lock requirements.in
+    env:
+      UV_PYTHON: "3.12.14" # keep in step with PYTHON_VERSION above
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: >
-          uv pip compile --python-version 3.12 --generate-hashes
-          --output-file requirements-dev.lock requirements-dev.in
-      - run: git diff --exit-code -- requirements-dev.lock
+      - working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.compile }}
+      - working-directory: ${{ matrix.dir }}
+        run: git diff --exit-code -- ${{ matrix.lock }}
 
   manifests:
     runs-on: ubuntu-24.04

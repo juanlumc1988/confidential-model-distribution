@@ -60,7 +60,7 @@ Requisitos transversales:
 
 ## 3. Hallazgos de la revisión (fuera de tests/CI, a decidir)
 
-- `consume.main` no captura las excepciones de `extract` (`tarfile.FilterError`, `OSError`) ni de `load_model`. El comportamiento sigue siendo fail-closed (sale con código ≠ 0), pero con traceback en vez de la línea `[x] …` que usan el resto de errores, contra lo que el propio código dice buscar. Propuesta: capturarlas y devolver `fail(...)`, con su test.
+- **(Corregido)** `consume.main` no capturaba las excepciones de `extract` (`tarfile.FilterError`, `OSError`) ni de `load_model`. El comportamiento sigue siendo fail-closed (sale con código ≠ 0), pero con traceback en vez de la línea `[x] …` que usan el resto de errores, contra lo que el propio código dice buscar. Propuesta: capturarlas y devolver `fail(...)`, con su test.
 - ~~La versión de Python solo se conoce por el digest.~~ **Hecho:** documentada en los dos Dockerfiles; `requirements-dev.lock` se compila con `--python-version 3.12` y con los locks de las imágenes como constraints (cryptography, cffi, pycparser y packaging tienen la misma versión en los tres locks).
 
 ## Orden sugerido
@@ -76,9 +76,9 @@ Requisitos transversales:
 - [x] Tests unitarios (61) de `shared/`, `consumer/` y `producer/`; cobertura total 94 %. Sin cubrir: `download_artifact` y `load_model` (los cubre el e2e).
 - [x] `requirements-dev.in`/`.lock`: Python 3.12, locks de imagen como constraints, ruff 0.16.8 fijado.
 - [x] `ruff.toml` con reglas explícitas (E, W, F, I, B). El código fuente se ha formateado con `ruff format` (solo cambios de saltos de línea).
-- [x] `.github/workflows/ci.yml`: lint (ruff + shellcheck), test (3.12.14, cobertura ≥ 90 %), lock-check (lock de desarrollo), manifests (kubeconform v0.8.0 con checksum), docker-build (producer y consumer).
+- [x] `.github/workflows/ci.yml`: lint (ruff + shellcheck), test (3.12.14, cobertura ≥ 90 %), lock-check (los tres locks), manifests (kubeconform v0.8.0 con checksum), docker-build (producer y consumer).
 - [x] `.github/dependabot.yml`: github-actions y docker. pip queda fuera: Dependabot no regenera locks de uv con hashes.
-- [ ] Lock-check de los locks de imagen: no verificado (el proxy de la sesión bloquea `download.pytorch.org`). Pendiente de confirmar que `uv pip compile` los reproduce idénticos y, en tal caso, añadirlos al job.
+- [x] Lock-check de los locks de imagen: cada lock se regenera con el comando de su propia cabecera (la versión de Python va en `UV_PYTHON`, que uv no escribe en el fichero) y se compara con `git diff`.
 - [ ] e2e manual (`workflow_dispatch`).
-- [ ] Hallazgo: `write_local` no corrige los permisos de un `model.key` ya existente (`O_CREAT` solo aplica `0600` al crear). Si existía con `0644`, se queda en `0644`. Corrección propuesta: `os.fchmod(fd, 0o600)` tras `os.open`, con su test.
-- [ ] Hallazgo: `consume.main` no captura los errores de `extract`/`load_model` (ver §3).
+- [x] Hallazgo corregido: `write_local` aplica `os.fchmod(fd, 0o600)` aunque `model.key` ya exista (antes conservaba el modo previo, p. ej. `0644`). Test de regresión incluido.
+- [x] Hallazgo corregido: `consume.main` informa en una línea de los fallos de `extract` (`TarError`/`OSError`) y de `load_model`, y sale con 1. Tests: archivo inseguro, archivo corrupto y fallo de carga.
