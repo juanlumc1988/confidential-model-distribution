@@ -162,3 +162,34 @@ def test_main_download_failure(env, monkeypatch):
 
     monkeypatch.setattr(consume, "download_artifact", boom)
     assert_failed_closed(env)
+
+
+def reencrypt(env, tarball):
+    key, blob = encrypt(tarball, associated_data(REPO))
+    env["key_path"].write_bytes(key)
+    env["artifact"].write_bytes(blob)
+
+
+def test_main_unsafe_archive_is_one_line_failure(env, capsys):
+    # Authentic but refused by the "data" filter: reported, not a traceback.
+    reencrypt(env, make_tar(lambda t: add_file(t, "../escape")))
+    assert consume.main(env["argv"]) == 1
+    assert env["loaded"] == []
+    assert "could not unpack" in capsys.readouterr().err
+    assert not (env["work"] / "escape").exists()
+
+
+def test_main_corrupt_archive_is_one_line_failure(env, capsys):
+    reencrypt(env, b"not a tar archive" * 64)
+    assert consume.main(env["argv"]) == 1
+    assert env["loaded"] == []
+    assert "could not unpack" in capsys.readouterr().err
+
+
+def test_main_load_failure_is_one_line_failure(env, monkeypatch, capsys):
+    def broken(model_dir):
+        raise OSError("no config.json")
+
+    monkeypatch.setattr(consume, "load_model", broken)
+    assert consume.main(env["argv"]) == 1
+    assert "could not load the model: OSError" in capsys.readouterr().err
