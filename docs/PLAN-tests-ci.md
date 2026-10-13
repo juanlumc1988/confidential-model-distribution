@@ -73,7 +73,7 @@ Requisitos transversales:
 
 ## Estado de implementación
 
-- [x] Tests unitarios (61) de `shared/`, `consumer/` y `producer/`; cobertura total 94 %. Sin cubrir: `download_artifact` y `load_model` (los cubre el e2e).
+- [x] Tests unitarios (65) de `shared/`, `consumer/` y `producer/`; cobertura total 94 %. Sin cubrir: `download_artifact` y `load_model` (los cubre el e2e).
 - [x] `requirements-dev.in`/`.lock`: Python 3.12, locks de imagen como constraints, ruff 0.16.8 fijado.
 - [x] `ruff.toml` con reglas explícitas (E, W, F, I, B). El código fuente se ha formateado con `ruff format` (solo cambios de saltos de línea).
 - [x] `.github/workflows/ci.yml`: lint (ruff + shellcheck), test (3.12.14, cobertura ≥ 90 %), lock-check (los tres locks), manifests (kubeconform v0.8.0 con checksum), docker-build (producer y consumer).
