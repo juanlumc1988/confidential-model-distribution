@@ -4,7 +4,7 @@ Estado actual (revisado 2026-10-13, contrastado con el código):
 
 - ~1000 líneas de Python 3 (`shared/`, `producer/`, `consumer/`) + `setup/setup-dev-env.sh`.
 - **Sin tests.** **Sin CI** (no existe `.github/`).
-- Dependencias fijadas con hash (`requirements.lock`, `uv pip compile`); imagen base `python@sha256:…` fijada por digest (la versión de Python **no** aparece en el Dockerfile).
+- Dependencias fijadas con hash (`requirements.lock`, `uv pip compile`); imagen base `python@sha256:…` fijada por digest = `python:3.12.14-slim-trixie` (verificado en el índice de Docker Hub y en el `PYTHON_VERSION` de la config amd64).
 - La verificación actual es manual, end-to-end en kind (`manifests/verify/*`: sin clave, clave errónea, artefacto manipulado).
 
 ## 1. Tests unitarios (pytest), sin red ni clúster
@@ -47,7 +47,7 @@ Formato: `nonce(12) || ciphertext || tag(16)`. **No hay cabecera**: `FORMAT_VERS
 
 En `push` y `pull_request`, jobs en paralelo:
 1. **lint**: `ruff check` + `ruff format --check`; `shellcheck setup/setup-dev-env.sh`.
-2. **test**: misma versión de Python que la imagen base, que **hay que averiguar** (`docker run --rm python@sha256:78387b… python -V`) y fijar explícitamente en el workflow. Requisito: `tarfile` con `filter=` (Python ≥ 3.12, o un parche de seguridad equivalente en 3.8–3.11). Después, `pytest --cov`.
+2. **test**: `actions/setup-python` con `python-version: 3.12.14` (la versión de la imagen, verificada; trae `tarfile` con `filter=` de serie), `pip install --require-hashes -r requirements-dev.lock` y `pytest --cov`.
 3. **docker-build**: build de las dos imágenes desde la raíz (`docker build -f producer/Dockerfile .`), sin push.
 4. **manifests**: `kubeconform` sobre `manifests/` (incluido `verify/`).
 5. **lock-check**: `uv pip compile` de cada `requirements.in` y `git diff --exit-code` sobre los locks.
@@ -61,7 +61,7 @@ Requisitos transversales:
 ## 3. Hallazgos de la revisión (fuera de tests/CI, a decidir)
 
 - `consume.main` no captura las excepciones de `extract` (`tarfile.FilterError`, `OSError`) ni de `load_model`. El comportamiento sigue siendo fail-closed (sale con código ≠ 0), pero con traceback en vez de la línea `[x] …` que usan el resto de errores, contra lo que el propio código dice buscar. Propuesta: capturarlas y devolver `fail(...)`, con su test.
-- La versión de Python solo se conoce por el digest. Conviene documentarla en un comentario del Dockerfile para que la CI y los locks no diverjan sin que nadie lo note.
+- ~~La versión de Python solo se conoce por el digest.~~ **Hecho:** documentada en los dos Dockerfiles; `requirements-dev.lock` se compila con `--python-version 3.12` y con los locks de las imágenes como constraints (cryptography, cffi, pycparser y packaging tienen la misma versión en los tres locks).
 
 ## Orden sugerido
 

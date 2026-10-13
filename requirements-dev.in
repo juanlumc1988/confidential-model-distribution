@@ -1,18 +1,27 @@
 # Test-only dependencies. Edit this file, then regenerate the lock from the
 # repository root:
 #
-#   uv pip compile --generate-hashes --output-file requirements-dev.lock requirements-dev.in
+#   uv pip compile --python-version 3.12 --generate-hashes --output-file requirements-dev.lock requirements-dev.in
 #
 # Install with hashes enforced, as the images do:
 #
 #   pip install --require-hashes -r requirements-dev.lock
 #
-# cryptography is pinned to the version in both image locks, so the tests
-# exercise the same AES-GCM implementation the producer and consumer run.
+# --python-version 3.12 matches the base image (python:3.12.14-slim-trixie,
+# pinned by digest in both Dockerfiles).
+#
+# The image locks are constraints: any package shared with them (cryptography,
+# cffi, pycparser, packaging) resolves to the exact version the images run, so
+# the tests exercise the same AES-GCM implementation. Regenerate this lock
+# whenever an image lock changes.
+
+-c consumer/requirements.lock
+-c producer/requirements.lock
+
 # torch, transformers, huggingface_hub and kubernetes are absent on purpose:
 # they are imported inside the functions that use them, and the unit tests
 # stub those functions instead.
 
-cryptography==50.0.1
+cryptography
 pytest
 pytest-cov
