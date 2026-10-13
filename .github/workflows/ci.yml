@@ -1,0 +1,89 @@
+# Fast checks on every push and pull request. Nothing here needs a secret,
+# a cluster or the Hugging Face Hub.
+#
+# Actions are pinned by commit SHA, like the base image is pinned by digest;
+# Dependabot (.github/dependabot.yml) proposes the updates.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Must match the base image (python:3.12.14-slim-trixie, see the Dockerfiles).
+  PYTHON_VERSION: "3.12.14"
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install --require-hashes -r requirements-dev.lock
+      - run: ruff check .
+      - run: ruff format --check .
+      # shellcheck is preinstalled on GitHub's Ubuntu runners.
+      - run: shellcheck setup/setup-dev-env.sh
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install --require-hashes -r requirements-dev.lock
+      - run: >
+          pytest
+          --cov=shared --cov=producer --cov=consumer
+          --cov-report=term-missing
+          --cov-fail-under=90
+
+  lock-check:
+    # requirements-dev.lock must be exactly what its .in resolves to. The image
+    # locks are verified by docker-build: pip --require-hashes rejects them if
+    # anything is missing or altered.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: >
+          uv pip compile --python-version 3.12 --generate-hashes
+          --output-file requirements-dev.lock requirements-dev.in
+      - run: git diff --exit-code -- requirements-dev.lock
+
+  manifests:
+    runs-on: ubuntu-24.04
+    env:
+      KUBECONFORM_VERSION: v0.8.0
+      KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install kubeconform (checksum verified)
+        run: |
+          curl -fsSLo kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  kubeconform.tar.gz" | sha256sum --check --strict
+          tar -xzf kubeconform.tar.gz kubeconform
+      - run: ./kubeconform -strict -summary manifests/
+
+  docker-build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [producer, consumer]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Built from the repository root so shared/ can be copied in; not pushed.
+      - run: docker build -f ${{ matrix.image }}/Dockerfile -t ${{ matrix.image }}:ci .

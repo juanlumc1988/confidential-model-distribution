@@ -70,3 +70,15 @@ Requisitos transversales:
 3. Resto de tests unitarios.
 4. docker-build, manifests, lock-check y Dependabot.
 5. e2e manual.
+
+## Estado de implementación
+
+- [x] Tests unitarios (61) de `shared/`, `consumer/` y `producer/`; cobertura total 94 %. Sin cubrir: `download_artifact` y `load_model` (los cubre el e2e).
+- [x] `requirements-dev.in`/`.lock`: Python 3.12, locks de imagen como constraints, ruff 0.16.8 fijado.
+- [x] `ruff.toml` con reglas explícitas (E, W, F, I, B). El código fuente se ha formateado con `ruff format` (solo cambios de saltos de línea).
+- [x] `.github/workflows/ci.yml`: lint (ruff + shellcheck), test (3.12.14, cobertura ≥ 90 %), lock-check (lock de desarrollo), manifests (kubeconform v0.8.0 con checksum), docker-build (producer y consumer).
+- [x] `.github/dependabot.yml`: github-actions y docker. pip queda fuera: Dependabot no regenera locks de uv con hashes.
+- [ ] Lock-check de los locks de imagen: no verificado (el proxy de la sesión bloquea `download.pytorch.org`). Pendiente de confirmar que `uv pip compile` los reproduce idénticos y, en tal caso, añadirlos al job.
+- [ ] e2e manual (`workflow_dispatch`).
+- [ ] Hallazgo: `write_local` no corrige los permisos de un `model.key` ya existente (`O_CREAT` solo aplica `0600` al crear). Si existía con `0644`, se queda en `0644`. Corrección propuesta: `os.fchmod(fd, 0o600)` tras `os.open`, con su test.
+- [ ] Hallazgo: `consume.main` no captura los errores de `extract`/`load_model` (ver §3).
