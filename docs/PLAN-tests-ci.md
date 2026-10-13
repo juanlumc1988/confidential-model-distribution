@@ -1,47 +1,72 @@
 # Plan: tests unitarios + CI
 
-Estado actual (revisado 2026-10-13):
+Estado actual (revisado 2026-10-13, contrastado con el código):
 
 - ~1000 líneas de Python 3 (`shared/`, `producer/`, `consumer/`) + `setup/setup-dev-env.sh`.
-- **Sin tests.** **Sin CI** (no existe `.github/workflows/`).
-- Dependencias fijadas con hash (`requirements.lock`, `uv pip compile`); imágenes Docker fijadas por digest.
+- **Sin tests.** **Sin CI** (no existe `.github/`).
+- Dependencias fijadas con hash (`requirements.lock`, `uv pip compile`); imagen base `python@sha256:…` fijada por digest (la versión de Python **no** aparece en el Dockerfile).
 - La verificación actual es manual, end-to-end en kind (`manifests/verify/*`: sin clave, clave errónea, artefacto manipulado).
 
 ## 1. Tests unitarios (pytest), sin red ni clúster
 
-| Módulo | Qué probar |
-| --- | --- |
-| `shared/artifact_format.py` | round-trip `encrypt`/`decrypt`; fallo con clave errónea, AAD distinta (otro `hf_repo_id`), blob truncado, tag/nonce/cabecera alterados, `FORMAT_VERSION` desconocida; longitudes `KEY_BYTES`/`NONCE_BYTES`/`TAG_BYTES`; nonce distinto en cada llamada. |
-| `producer/build_artifact.py` | `build_tar` determinista (mismos bytes en dos ejecuciones; `_normalise` anula uid/gid/mtime/modo); `build` con `fetch_and_normalise` mockeado y `self_check`. |
-| `producer/publish.py` | `render_model_card`; `current_namespace` (fichero presente/ausente, vía `tmp_path`); `preflight` lanza `PreflightError` (cliente HF mockeado); `store_key_in_secret` crea vs. actualiza (cliente k8s mockeado, 409 → replace). |
-| `producer/main.py` | `parse_args` (defaults, obligatorios); `write_local` (contenido y permisos `0600` de la clave). |
-| `consumer/consume.py` | `read_key` (ausente, vacía, longitud incorrecta, base64/raw según formato); `extract` rechaza path traversal (`../`, rutas absolutas, symlinks); `main` devuelve código ≠ 0 en cada modo de fallo (fail-closed), con `download_artifact`/`load_model` mockeados. |
+### `shared/artifact_format.py`
+Formato: `nonce(12) || ciphertext || tag(16)`. **No hay cabecera**: `FORMAT_VERSION` solo entra en la AAD.
+- Round-trip `encrypt` → `decrypt`; clave de 32 bytes; nonce distinto en dos llamadas.
+- `associated_data("x") == b"cmd/v1|x"`.
+- `InvalidTag` con: clave errónea, AAD distinta (otro repo o otra versión), un bit cambiado en nonce, ciphertext o tag, blob truncado (≥ 28 bytes).
+- `ValueError` con blob < 28 bytes (`NONCE_BYTES + TAG_BYTES`).
 
-Requisitos:
-- `tests/` en raíz, `conftest.py` que añada `shared/` al `sys.path` (igual que hacen las imágenes).
-- Dependencias de test separadas (`requirements-dev.in` → lock con hash): `pytest`, `pytest-cov`.
-- Mock de `huggingface_hub` y `kubernetes`; ningún test toca red.
-- Objetivo de cobertura: 100 % en `artifact_format.py`, ≥ 80 % global.
+### `producer/build_artifact.py`
+- `_normalise`: uid/gid=0, uname/gname vacíos, mtime=0, modo 0755 en directorios y 0644 en ficheros.
+- `build_tar` determinista: mismos bytes tras cambiar mtime/permisos del origen; entradas ordenadas; rutas relativas.
+- `build` con `fetch_and_normalise` mockeado: el resultado se descifra con la AAD del repo; el directorio temporal desaparece.
+
+### `producer/main.py`
+- `parse_args`: valores por defecto y flags (`--skip-upload`, `--skip-secret`, `--out-dir`, `--namespace`).
+- `write_local`: escribe `artifact.enc` y `model.key` en **bytes crudos** (no base64), con modo `0600` desde la creación (comprobar con `umask(0)`).
+- `main`: devuelve 2 sin `HF_TOKEN` y sin `--skip-upload`; devuelve 3 si `preflight` lanza `PreflightError`; con `--skip-upload --skip-secret` no llama a la red.
+
+### `producer/publish.py`
+- `render_model_card` con una plantilla en `tmp_path`.
+- `current_namespace`: fichero con contenido, vacío (→ default) y ausente (→ default). Hay que parchear `NAMESPACE_FILE`.
+- `store_key_in_secret` (con `kubernetes` mockeado): create OK; un 409 lleva a `replace`; cualquier otro status se relanza; `data["model.key"]` es el base64 de la clave.
+- `preflight` → `PreflightError` (con el cliente HF mockeado).
+
+### `consumer/consume.py`
+- `read_key`: acepta 32 bytes crudos, **incluidos los que empiezan o acaban en `0x0a`/`0x20`** (no hace `.strip()`, y es deliberado); `ValueError` con 0, 31 o 33 bytes; `FileNotFoundError` si no existe.
+- `extract` (`filter="data"`): rechaza `../`, rutas absolutas, symlinks que salen del destino y ficheros de dispositivo (`tarfile.FilterError`); extrae bien un tar generado por `build_tar`.
+- `main` (con `download_artifact` y `load_model` mockeados) devuelve 1 en estos casos: sin clave, clave con longitud incorrecta, fallo de descarga, `InvalidTag` y artefacto corto. Con artefacto válido devuelve 0. En los casos de fallo hay que comprobar además que no se ha extraído nada en `work_dir/model`.
+
+### Requisitos
+- `tests/` en la raíz y un `conftest.py` que meta `shared/`, `producer/` y `consumer/` en `sys.path`. Así reproduce el `PYTHONPATH=/app/shared` de las imágenes y el import entre módulos hermanos de `producer/` (`main` importa `build_artifact` y `publish`).
+- Dependencias de test en `requirements-dev.in`, con su lock con hash: `pytest`, `pytest-cov`, `cryptography` (la misma versión que en los locks).
+- No hace falta instalar `torch`/`transformers` para los tests unitarios: `huggingface_hub`, `kubernetes` y `transformers` se importan dentro de las funciones, así que basta con mockearlos con `monkeypatch`/`sys.modules`.
+- Cobertura: 100 % en `artifact_format.py` y al menos 80 % en total (sin contar `load_model`, `download_artifact`, `upload_artifact` ni `fetch_and_normalise`, que se cubren en el e2e).
 
 ## 2. CI (GitHub Actions, `.github/workflows/ci.yml`)
 
 En `push` y `pull_request`, jobs en paralelo:
 1. **lint**: `ruff check` + `ruff format --check`; `shellcheck setup/setup-dev-env.sh`.
-2. **test**: Python de la misma versión que la imagen base; instalar locks con `--require-hashes`; `pytest --cov`.
-3. **docker-build**: `docker build` de `producer/` y `consumer/` (sin push), verifica que los locks y Dockerfiles siguen siendo válidos.
-4. **manifests**: `kubeconform` sobre `manifests/`.
-5. *(opcional, manual / nightly)* **e2e**: kind + `manifests/verify/*`. Necesita secreto `HF_TOKEN` → solo `workflow_dispatch`, nunca en PRs de forks.
+2. **test**: misma versión de Python que la imagen base, que **hay que averiguar** (`docker run --rm python@sha256:78387b… python -V`) y fijar explícitamente en el workflow. Requisito: `tarfile` con `filter=` (Python ≥ 3.12, o un parche de seguridad equivalente en 3.8–3.11). Después, `pytest --cov`.
+3. **docker-build**: build de las dos imágenes desde la raíz (`docker build -f producer/Dockerfile .`), sin push.
+4. **manifests**: `kubeconform` sobre `manifests/` (incluido `verify/`).
+5. **lock-check**: `uv pip compile` de cada `requirements.in` y `git diff --exit-code` sobre los locks.
+6. *(opcional)* **e2e**: kind + producer + `manifests/verify/*`. Necesita el secreto `HF_TOKEN`, así que solo con `workflow_dispatch` y nunca en PRs desde forks.
 
 Requisitos transversales:
-- Acciones fijadas por SHA (coherente con los digests de Docker).
-- `permissions: contents: read` mínimo.
-- Comprobar que `requirements.lock` coincide con `requirements.in` (`uv pip compile` + `git diff --exit-code`).
-- Dependabot para actions, pip y Docker.
+- Acciones fijadas por SHA, coherente con los digests de Docker.
+- `permissions: contents: read` a nivel de workflow.
+- Dependabot para `github-actions`, `pip` (los dos directorios) y `docker`.
+
+## 3. Hallazgos de la revisión (fuera de tests/CI, a decidir)
+
+- `consume.main` no captura las excepciones de `extract` (`tarfile.FilterError`, `OSError`) ni de `load_model`. El comportamiento sigue siendo fail-closed (sale con código ≠ 0), pero con traceback en vez de la línea `[x] …` que usan el resto de errores, contra lo que el propio código dice buscar. Propuesta: capturarlas y devolver `fail(...)`, con su test.
+- La versión de Python solo se conoce por el digest. Conviene documentarla en un comentario del Dockerfile para que la CI y los locks no diverjan sin que nadie lo note.
 
 ## Orden sugerido
 
-1. Tests de `artifact_format.py` + `extract`/`read_key` (núcleo de seguridad).
-2. Workflow con lint + test.
+1. Tests de `artifact_format.py`, `read_key`, `extract` y `consume.main` (el núcleo de seguridad y fail-closed).
+2. Workflow con lint y test, con la versión de Python fijada.
 3. Resto de tests unitarios.
-4. docker-build, manifests, dependabot.
+4. docker-build, manifests, lock-check y Dependabot.
 5. e2e manual.
