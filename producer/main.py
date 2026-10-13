@@ -88,8 +88,13 @@ def write_local(out_dir: Path, blob: bytes, key: bytes) -> None:
     #
     # Opened 0600 rather than written and then chmod-ed: between those two
     # calls the file would briefly exist with default permissions.
+    #
+    # The mode argument only applies when O_CREAT actually creates the file.
+    # A key left by an earlier run keeps whatever mode it had, so it is reset
+    # on the open descriptor before any key byte is written.
     key_path = out_dir / "model.key"
     fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
     with os.fdopen(fd, "wb") as handle:
         handle.write(key)
 

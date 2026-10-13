@@ -61,6 +61,16 @@ def test_write_local_raw_key_owner_only(tmp_path):
     assert stat.S_IMODE((out / "model.key").stat().st_mode) == 0o600
 
 
+def test_write_local_tightens_existing_key_file(tmp_path):
+    # O_CREAT's mode does not apply to a file that already exists.
+    key_path = tmp_path / "model.key"
+    key_path.write_bytes(b"stale")
+    key_path.chmod(0o644)
+    main.write_local(tmp_path, b"cipher", KEY)
+    assert key_path.read_bytes() == KEY
+    assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
+
+
 # --- main -------------------------------------------------------------------
 
 
