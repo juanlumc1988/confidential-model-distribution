@@ -132,9 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.skip_upload:
         log("Skipping upload")
     else:
-        url = publish.upload_artifact(
-            repo_id=args.hf_repo_id, blob=blob, token=token
-        )
+        url = publish.upload_artifact(repo_id=args.hf_repo_id, blob=blob, token=token)
         log(f"Published: {url}")
 
     if args.skip_secret:

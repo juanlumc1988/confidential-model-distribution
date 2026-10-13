@@ -103,8 +103,13 @@ def env(tmp_path, monkeypatch):
 
     work = tmp_path / "work"
     argv = ["--hf-repo-id", REPO, "--key-path", str(key_path), "--work-dir", str(work)]
-    return {"argv": argv, "key_path": key_path, "artifact": artifact,
-            "work": work, "loaded": loaded}
+    return {
+        "argv": argv,
+        "key_path": key_path,
+        "artifact": artifact,
+        "work": work,
+        "loaded": loaded,
+    }
 
 
 def test_main_succeeds(env):

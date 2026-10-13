@@ -123,7 +123,9 @@ def build_tar(src: Path) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def build(model_id: str, hf_repo_id: str, self_check: bool = True) -> tuple[bytes, bytes]:
+def build(
+    model_id: str, hf_repo_id: str, self_check: bool = True
+) -> tuple[bytes, bytes]:
     """Fetch, normalise, pack and encrypt ``model_id``.
 
     Returns ``(key, blob)``. Nothing touches the filesystem outside a temporary
@@ -144,8 +146,6 @@ def build(model_id: str, hf_repo_id: str, self_check: bool = True) -> tuple[byte
         if self_check:
             log("Verifying round trip")
             if decrypt(blob, key, aad) != plaintext:
-                raise RuntimeError(
-                    "round trip mismatch; refusing to emit the artifact"
-                )
+                raise RuntimeError("round trip mismatch; refusing to emit the artifact")
 
     return key, blob
