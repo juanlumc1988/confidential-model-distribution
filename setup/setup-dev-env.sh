@@ -167,7 +167,10 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq kubectl
 # 6. kind
 #
 # Distributed only as a static binary, so it goes to /usr/local/bin rather
-# than through apt.
+# than through apt. Unlike the apt packages above, nothing signs it, so the
+# download is checked against the SHA-256 published with the release before
+# it is installed. A mismatch (truncated download, a proxy rewriting the
+# body, a replaced asset) aborts instead of installing.
 # ---------------------------------------------------------------------------
 log "Installing kind"
 
@@ -175,10 +178,23 @@ KIND_VERSION="$(curl -fsSL https://api.github.com/repos/kubernetes-sigs/kind/rel
 [ -n "$KIND_VERSION" ] || die "Could not resolve the latest kind release from the GitHub API."
 info "Latest release: ${KIND_VERSION}"
 
-TMP_KIND="$(mktemp)"
-curl -fsSL -o "$TMP_KIND" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}"
-sudo install -m 0755 "$TMP_KIND" /usr/local/bin/kind
-rm -f "$TMP_KIND"
+KIND_URL="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-${ARCH}"
+TMP_KIND="$(mktemp -d)"
+trap 'rm -rf "$TMP_KIND"' EXIT
+
+curl -fsSL -o "${TMP_KIND}/kind" "$KIND_URL"
+# The .sha256sum file reads "<hash>  kind-linux-<arch>". Only the hash is
+# used, checked against the file under its local name.
+KIND_SHA256="$(curl -fsSL "${KIND_URL}.sha256sum" | awk '{print $1}')"
+printf '%s' "$KIND_SHA256" | grep -Eqx '[0-9a-f]{64}' \
+  || die "Could not read a SHA-256 for kind ${KIND_VERSION} from ${KIND_URL}.sha256sum."
+echo "${KIND_SHA256}  ${TMP_KIND}/kind" | sha256sum --check --strict --quiet \
+  || die "Checksum mismatch for kind ${KIND_VERSION}; not installing it."
+info "SHA-256 verified: ${KIND_SHA256}"
+
+sudo install -m 0755 "${TMP_KIND}/kind" /usr/local/bin/kind
+rm -rf "$TMP_KIND"
+trap - EXIT
 
 # ---------------------------------------------------------------------------
 # 7. Optional cluster
