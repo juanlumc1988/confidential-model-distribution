@@ -1,6 +1,6 @@
 # Development Environment Setup
 
-Everything needed to build and run this project locally. Target host is **Ubuntu 24.04 LTS**, either natively or under WSL2 on Windows 11.
+Everything needed to build and run this project locally. Target host is **Ubuntu 24.04 LTS**, either natively or under WSL2 on Windows 10 or 11.
 
 No cloud account and no confidential hardware are required. The Kubernetes cluster runs locally.
 
@@ -14,6 +14,7 @@ No cloud account and no confidential hardware are required. The Kubernetes clust
 | kubectl | `pkgs.k8s.io` apt repository | Talk to the cluster |
 | kind | GitHub release binary | Run a single-node Kubernetes cluster in Docker |
 | Python 3.12 + venv | Ubuntu archive | Local iteration before containerising |
+| `.venv` with pytest, ruff, cryptography | `requirements-dev.lock` (hashed) | Unit tests and lint, as in CI |
 | `jq`, `git`, `make`, `curl` | Ubuntu archive | Supporting tooling |
 
 ---
@@ -23,6 +24,8 @@ No cloud account and no confidential hardware are required. The Kubernetes clust
 - **Hugging Face account** with a write-scoped access token, for publishing the encrypted artifact.
 - **~8 GB free RAM** and **~20 GB free disk**.
 - On Windows: WSL2 enabled, and Docker Desktop's WSL integration **disabled** for this distribution if Docker Desktop is installed. Two Docker CLIs on the same PATH will conflict.
+- On **Windows 10**: version 22H2 and the Store version of WSL. The setup relies on systemd inside WSL, which the WSL built into Windows 10 does not support. Check with `wsl --version` in PowerShell; if the command is not recognised, run `wsl --update` first.
+- For the editor: **VSCode on Windows** with the **WSL** extension (`ms-vscode-remote.remote-wsl`). Nothing else is installed on the Windows side.
 
 ---
 
@@ -75,13 +78,26 @@ This creates a single-node kind cluster named `confidential-ml`. To use a differ
 CLUSTER_NAME=my-cluster ./setup/setup-dev-env.sh --with-cluster
 ```
 
-## 6. Python environment (optional, for local iteration)
-
-Ubuntu 24.04 marks the system interpreter as externally managed (PEP 668), so pip refuses to install outside a virtual environment. That is intended behaviour, not an error.
+## 6. Python environment and VSCode
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+./setup/setup-python-dev.sh
 ```
+
+Creates `.venv` from `requirements-dev.lock` with `--require-hashes`, exactly as CI installs it, then runs `ruff` and the unit tests to prove the environment works. No sudo is needed unless `python3-venv` is missing. Run it again after the lock changes; `--recreate` rebuilds `.venv` from scratch.
+
+Ubuntu 24.04 marks the system interpreter as externally managed (PEP 668), so pip refuses to install outside a virtual environment. That is why everything goes into `.venv`.
+
+Then open the repository in VSCode **from the Ubuntu shell**:
+
+```bash
+cd ~/confidential-model-distribution
+code .
+```
+
+VSCode on Windows connects to WSL and installs its server there on the first run. Accept the recommended extensions (`.vscode/extensions.json`). `.vscode/settings.json` already selects `.venv` as the interpreter, enables pytest discovery in the Testing panel, and formats with ruff on save.
+
+Open the folder this way rather than through `\\wsl$\...` from Windows. Otherwise the Python extension, the terminal and the tests run on the Windows side, where none of this is installed.
 
 ---
 
@@ -91,9 +107,10 @@ python3 -m venv .venv && source .venv/bin/activate
 docker run --rm hello-world
 kubectl get nodes
 kind get clusters
+.venv/bin/python -m pytest -q
 ```
 
-A `Ready` node and a cluster named `confidential-ml` mean the environment is complete.
+A `Ready` node, a cluster named `confidential-ml` and the unit tests passing mean the environment is complete.
 
 ## Next
 
@@ -111,6 +128,12 @@ The environment is ready. Return to the main README and continue with
 **Builds are unexpectedly slow.** Check `pwd`. If the repository sits under `/mnt/c`, move it to your Linux home.
 
 **`docker` resolves to Docker Desktop.** Disable WSL integration for this distribution under Docker Desktop → Settings → Resources → WSL Integration.
+
+**`wsl --update` is not recognised, or systemd never starts on Windows 10.** The WSL built into Windows 10 predates systemd support. Update Windows 10 to 22H2 with current cumulative updates, then run `wsl --update` from PowerShell and `wsl --shutdown`.
+
+**`code .` opens VSCode but Python, tests or the terminal behave as on Windows.** The folder was opened from the Windows side. Close it and run `code .` from the Ubuntu shell; the status bar should read `WSL: Ubuntu-24.04`.
+
+**`setup-python-dev.sh` refuses to run under `/mnt`.** The repository is on the Windows filesystem. Clone it again under your Linux home, as in step 2.
 
 ---
 

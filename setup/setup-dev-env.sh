@@ -3,7 +3,7 @@
 # setup-dev-env.sh
 #
 # Part 0 infrastructure for the Confidential ML Model Distribution PoC.
-# Target host: Ubuntu 24.04 LTS (noble) running under WSL2 on Windows 11.
+# Target host: Ubuntu 24.04 LTS (noble) running under WSL2 on Windows 10 or 11.
 #
 # Installs: Docker Engine, kubectl, kind, and Python build prerequisites.
 # The rationale for every choice is documented in
@@ -231,8 +231,7 @@ echo
 echo "  2. Create the cluster if it was not created above:"
 echo "         kind create cluster --name ${CLUSTER_NAME}"
 echo
-echo "  3. Create the Python virtual environment for local iteration."
-echo "     Ubuntu 24.04 marks the system interpreter as externally managed"
-echo "     (PEP 668), so pip refuses to install outside a venv. That is intended."
-echo "         python3 -m venv .venv && source .venv/bin/activate"
+echo "  3. Create the Python development environment (.venv, tests, lint)"
+echo "     and the VSCode setup:"
+echo "         ./setup/setup-python-dev.sh"
 echo
