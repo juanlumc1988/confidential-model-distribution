@@ -50,6 +50,8 @@ jobs:
           --cov-fail-under=90
 
   lock-check:
+    # Short, stable name: the branch ruleset requires these checks by name.
+    name: lock-check (${{ matrix.dir }})
     # Every lock must be exactly what its requirements.in resolves to, so a
     # hand edit or a forgotten regeneration fails here. Each lock is rebuilt
     # with the command recorded in its own header: uv writes that command
