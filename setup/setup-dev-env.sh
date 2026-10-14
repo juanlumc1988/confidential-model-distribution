@@ -22,7 +22,11 @@ set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-confidential-ml}"
 CREATE_CLUSTER=0
-[ "${1:-}" = "--with-cluster" ] && CREATE_CLUSTER=1
+case "${1:-}" in
+  "") ;;
+  --with-cluster) CREATE_CLUSTER=1 ;;
+  *) printf 'usage: %s [--with-cluster]\n' "$0" >&2; exit 2 ;;
+esac
 
 KEYRINGS=/etc/apt/keyrings
 RESTART_REQUIRED=0
@@ -111,14 +115,17 @@ info "Python: $(python3 --version)"
 # Installed from Docker's own apt repository rather than the Ubuntu archive:
 # the archive package (docker.io) lags upstream and does not ship the buildx
 # plugin used for multi-stage builds.
+#
+# The key is kept ASCII-armoured as docker.asc, as in Docker's install docs:
+# apt reads it as is, and any other script following those docs writes the
+# same docker.list with the same key instead of a competing one.
 # ---------------------------------------------------------------------------
 log "Installing Docker Engine"
 
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | sudo gpg --yes --dearmor -o "${KEYRINGS}/docker.gpg"
-sudo chmod a+r "${KEYRINGS}/docker.gpg"
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o "${KEYRINGS}/docker.asc"
+sudo chmod a+r "${KEYRINGS}/docker.asc"
 
-echo "deb [arch=${ARCH} signed-by=${KEYRINGS}/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+echo "deb [arch=${ARCH} signed-by=${KEYRINGS}/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
   | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
 sudo apt-get update -qq
