@@ -1,0 +1,34 @@
+{
+  // Created by setup/setup-python-dev.sh from requirements-dev.lock.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+
+  // Same test entry point as CI. tests/conftest.py puts shared/, producer/
+  // and consumer/ on sys.path, as the images do with PYTHONPATH.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests", "-p", "no:cacheprovider"],
+  // Lets Pylance resolve the top-level imports (artifact_format, publish...).
+  "python.analysis.extraPaths": ["shared", "producer", "consumer", "tests"],
+
+  // ruff.toml is the single source of lint and format rules.
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "ruff.importStrategy": "fromEnvironment",
+
+  // The repository is Linux-only: LF everywhere, including when edited from
+  // Windows. .gitattributes enforces the same on commit.
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.exclude": {
+    "**/__pycache__": true,
+    ".ruff_cache": true,
+    ".coverage": true
+  }
+}

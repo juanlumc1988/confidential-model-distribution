@@ -33,7 +33,7 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       # shellcheck is preinstalled on GitHub's Ubuntu runners.
-      - run: shellcheck setup/setup-dev-env.sh
+      - run: shellcheck setup/*.sh
 
   test:
     runs-on: ubuntu-24.04

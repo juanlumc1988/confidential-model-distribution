@@ -83,7 +83,10 @@ transformers_cache/
 # ---------------------------------------------------------------------------
 # Editors and operating systems
 # ---------------------------------------------------------------------------
-.vscode/
+.vscode/*
+# Shared workspace settings (interpreter, tests, ruff); personal ones stay out.
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo

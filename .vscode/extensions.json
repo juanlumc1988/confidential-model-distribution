@@ -1,0 +1,12 @@
+{
+  // Installed inside WSL when the folder is opened through the WSL extension.
+  "recommendations": [
+    "ms-vscode-remote.remote-wsl",
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "timonwong.shellcheck",
+    "redhat.vscode-yaml",
+    "ms-azuretools.vscode-docker",
+    "ms-kubernetes-tools.vscode-kubernetes-tools"
+  ]
+}
