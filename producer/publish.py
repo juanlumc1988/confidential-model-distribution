@@ -21,9 +21,7 @@ SECRET_KEY_FIELD = "model.key"
 
 # Where the kubelet projects the pod's own namespace. Reading it means the Job
 # does not have to be told which namespace it is running in.
-NAMESPACE_FILE = Path(
-    "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
-)
+NAMESPACE_FILE = Path("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 
 
 def log(message: str) -> None:

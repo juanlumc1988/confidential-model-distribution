@@ -1,0 +1,21 @@
+# Lint and format settings for CI and local runs:
+#
+#   ruff check . && ruff format --check .
+#
+# The rule set is explicit so that a ruff upgrade cannot change what CI
+# enforces; ruff itself is pinned in requirements-dev.lock.
+
+target-version = "py312"
+
+[lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # import order
+    "B",  # bugbear
+]
+
+[lint.isort]
+# The images put these on the path as top-level modules (see tests/conftest.py).
+known-first-party = ["artifact_format", "build_artifact", "consume", "fakes", "main", "publish"]

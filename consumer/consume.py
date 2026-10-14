@@ -224,10 +224,25 @@ def main(argv: list[str] | None = None) -> int:
         return fail(f"the artifact is malformed: {exc}")
     log(f"Authenticated and decrypted to {len(tarball):,} bytes")
 
-    model_dir = extract(tarball, args.work_dir / "model")
+    # The tag already vouches for these bytes, so a failure from here on is a
+    # producer bug or a resource problem rather than tampering. It is still
+    # reported as one line, like every other failure in this program.
+    # tarfile.FilterError is a TarError: an entry the "data" filter refused.
+    try:
+        model_dir = extract(tarball, args.work_dir / "model")
+    except (tarfile.TarError, OSError) as exc:
+        return fail(
+            f"could not unpack the decrypted archive: {type(exc).__name__}: {exc}"
+        )
     log(f"Extracted to {model_dir} (tmpfs -- the node's disk never sees it)")
 
-    load_model(model_dir)
+    # Broad for the same reason as the download: transformers and torch raise
+    # OSError, ValueError, RuntimeError and their own types, and all of them
+    # mean the same thing here -- the model is not usable.
+    try:
+        load_model(model_dir)
+    except Exception as exc:  # noqa: BLE001
+        return fail(f"could not load the model: {type(exc).__name__}: {exc}")
     log("Consumer finished successfully")
     return 0
 

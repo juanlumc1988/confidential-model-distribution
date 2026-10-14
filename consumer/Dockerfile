@@ -4,6 +4,10 @@
 # Base image pinned by digest, not by tag: a tag is mutable and can be
 # repointed at different content, which would silently change what this
 # pipeline runs. The digest is the content.
+#
+# The digest is python:3.12.14-slim-trixie (PYTHON_VERSION=3.12.14 in the
+# image config). CI tests on that version and requirements-dev.lock is
+# compiled for it: update all three together when the digest changes.
 FROM python@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
