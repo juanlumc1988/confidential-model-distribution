@@ -5,10 +5,16 @@
 # repointed at different content, which would silently change what this
 # pipeline runs. The digest is the content.
 #
-# The digest is python:3.12.14-slim-trixie (PYTHON_VERSION=3.12.14 in the
-# image config). CI tests on that version and requirements-dev.lock is
-# compiled for it: update all three together when the digest changes.
-FROM python@sha256:e748956ccf3f50c9555f236753bbcd5f430d3937e665d3bd6922dd0e6e591a24
+# The tag is kept next to the digest. Docker resolves the digest and ignores
+# the tag, but Dependabot reads the tag to know which image line to follow.
+# With a bare digest it fell back to "latest" and moved this to
+# python:3.15.0-trixie (a different Python and the non-slim variant), which
+# the locks, CI and tests do not match.
+#
+# python:3.12.14-slim-trixie (PYTHON_VERSION=3.12.14 in the image config). CI
+# tests on that version and requirements-dev.lock is compiled for it: update
+# all three together when the Python version changes.
+FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
