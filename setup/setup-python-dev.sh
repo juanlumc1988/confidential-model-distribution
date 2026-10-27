@@ -23,8 +23,8 @@ case "${1:-}" in
   *) printf 'usage: %s [--recreate]\n' "$0" >&2; exit 2 ;;
 esac
 
-# CI tests on the base image's Python (3.12.14) and the dev lock is compiled
-# for 3.12, so any 3.12.x matches. Ubuntu 24.04 ships 3.12.
+# CI tests on the Python of the base image (read from the Dockerfiles) and the
+# dev lock is compiled for 3.12, so any 3.12.x matches. Ubuntu 24.04 ships 3.12.
 EXPECTED_MINOR="3.12"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -59,7 +59,7 @@ command -v python3 >/dev/null || die "python3 not found. Run ./setup/setup-dev-e
 PY_MINOR="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 info "System Python: $(python3 --version)"
 if [ "$PY_MINOR" != "$EXPECTED_MINOR" ]; then
-  warn "Expected Python ${EXPECTED_MINOR}.x (the images run 3.12.14), found ${PY_MINOR}."
+  warn "Expected Python ${EXPECTED_MINOR}.x (the minor version of the images), found ${PY_MINOR}."
   warn "Continuing; the lock may not install, or tests may differ from CI."
 fi
 

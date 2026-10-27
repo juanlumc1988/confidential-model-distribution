@@ -7,8 +7,9 @@
 #
 #   pip install --require-hashes -r requirements-dev.lock
 #
-# --python-version 3.12 matches the base image (python:3.12.14-slim-trixie,
-# pinned by digest in both Dockerfiles).
+# --python-version 3.12 is the minor version of the base image (the FROM line
+# of both Dockerfiles). Patch updates need nothing here; a new minor means
+# recompiling this lock and the two image locks.
 #
 # The image locks are constraints: any package shared with them (cryptography,
 # cffi, pycparser, packaging) resolves to the exact version the images run, so
