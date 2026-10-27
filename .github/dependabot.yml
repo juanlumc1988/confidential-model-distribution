@@ -8,3 +8,11 @@ updates:
     directories: [/producer, /consumer]
     schedule:
       interval: weekly
+    # Moving to another Python minor or major means recompiling the three
+    # locks and changing PYTHON_VERSION in ci.yml, so it is a decision, not
+    # an automatic bump. Patch and digest updates of 3.12 still arrive.
+    ignore:
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
