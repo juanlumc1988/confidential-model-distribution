@@ -11,9 +11,11 @@
 # python:3.15.0-trixie (a different Python and the non-slim variant), which
 # the locks, CI and tests do not match.
 #
-# python:3.12.14-slim-trixie (PYTHON_VERSION=3.12.14 in the image config). CI
-# tests on that version and requirements-dev.lock is compiled for it: update
-# all three together when the Python version changes.
+# The Python version is the one in this tag. CI reads it from here
+# (.github/scripts/python-version.sh) and runs lint and tests on it, and fails
+# if producer and consumer disagree or this line loses its tag, its digest or
+# the slim variant. A Dependabot bump therefore needs no follow-up. Only a
+# change of minor version (3.12 -> 3.13) needs the three locks recompiled.
 FROM python:3.12.15-slim-trixie@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

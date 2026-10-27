@@ -47,7 +47,7 @@ Formato: `nonce(12) || ciphertext || tag(16)`. **No hay cabecera**: `FORMAT_VERS
 
 En `push` y `pull_request`, jobs en paralelo:
 1. **lint**: `ruff check` + `ruff format --check`; `shellcheck setup/setup-dev-env.sh`.
-2. **test**: `actions/setup-python` con `python-version: 3.12.14` (la versión de la imagen, verificada; trae `tarfile` con `filter=` de serie), `pip install --require-hashes -r requirements-dev.lock` y `pytest --cov`.
+2. **test**: `actions/setup-python` con la versión de Python de la imagen, leída del `FROM` de los Dockerfiles con `.github/scripts/python-version.sh` (trae `tarfile` con `filter=` de serie), `pip install --require-hashes -r requirements-dev.lock` y `pytest --cov`.
 3. **docker-build**: build de las dos imágenes desde la raíz (`docker build -f producer/Dockerfile .`), sin push.
 4. **manifests**: `kubeconform` sobre `manifests/` (incluido `verify/`).
 5. **lock-check**: `uv pip compile` de cada `requirements.in` y `git diff --exit-code` sobre los locks.
@@ -76,9 +76,10 @@ Requisitos transversales:
 - [x] Tests unitarios (65) de `shared/`, `consumer/` y `producer/`; cobertura total 94 %. Sin cubrir: `download_artifact` y `load_model` (los cubre el e2e).
 - [x] `requirements-dev.in`/`.lock`: Python 3.12, locks de imagen como constraints, ruff 0.16.8 fijado.
 - [x] `ruff.toml` con reglas explícitas (E, W, F, I, B). El código fuente se ha formateado con `ruff format` (solo cambios de saltos de línea).
-- [x] `.github/workflows/ci.yml`: lint (ruff + shellcheck), test (3.12.14, cobertura ≥ 90 %), lock-check (los tres locks), manifests (kubeconform v0.8.0 con checksum), docker-build (producer y consumer).
+- [x] `.github/workflows/ci.yml`: lint (ruff + shellcheck), test (Python de la imagen, cobertura ≥ 90 %), lock-check (los tres locks), manifests (kubeconform v0.8.0 con checksum), docker-build (producer y consumer).
 - [x] `.github/dependabot.yml`: github-actions y docker. pip queda fuera: Dependabot no regenera locks de uv con hashes.
 - [x] Lock-check de los locks de imagen: cada lock se regenera con el comando de su propia cabecera (la versión de Python va en `UV_PYTHON`, que uv no escribe en el fichero) y se compara con `git diff`.
 - [ ] e2e manual (`workflow_dispatch`).
 - [x] Hallazgo corregido: `write_local` aplica `os.fchmod(fd, 0o600)` aunque `model.key` ya exista (antes conservaba el modo previo, p. ej. `0644`). Test de regresión incluido.
 - [x] Hallazgo corregido: `consume.main` informa en una línea de los fallos de `extract` (`TarError`/`OSError`) y de `load_model`, y sale con 1. Tests: archivo inseguro, archivo corrupto y fallo de carga.
+- [x] La versión de Python de la CI se lee del `FROM` de los Dockerfiles (`.github/scripts/python-version.sh`, con tests en `tests/test_python_version.py`): un bump de Dependabot no exige tocar `ci.yml`. El script falla si el `FROM` pierde el tag, el digest o la variante `slim`, o si producer y consumer difieren. Un cambio de versión *minor* sigue exigiendo recompilar los tres locks.

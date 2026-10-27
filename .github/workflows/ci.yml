@@ -17,31 +17,43 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Must match the base image (python:3.12.14-slim-trixie, see the Dockerfiles).
-  PYTHON_VERSION: "3.12.14"
+# The Python version is not written here: each job reads it from the FROM line
+# of the Dockerfiles (.github/scripts/python-version.sh), so lint, tests and
+# lock-check always run on the interpreter of the images. The step is inside
+# every job, not a shared job they depend on: a failed dependency would make
+# them "skipped", which a branch ruleset counts as passing.
 
 jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Python version of the images
+        id: python
+        run: |
+          version="$(.github/scripts/python-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ steps.python.outputs.version }}
       - run: pip install --require-hashes -r requirements-dev.lock
       - run: ruff check .
       - run: ruff format --check .
       # shellcheck is preinstalled on GitHub's Ubuntu runners.
-      - run: shellcheck setup/*.sh
+      - run: shellcheck setup/*.sh .github/scripts/*.sh
 
   test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Python version of the images
+        id: python
+        run: |
+          version="$(.github/scripts/python-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ steps.python.outputs.version }}
       - run: pip install --require-hashes -r requirements-dev.lock
       - run: >
           pytest
@@ -56,7 +68,8 @@ jobs:
     # hand edit or a forgotten regeneration fails here. Each lock is rebuilt
     # with the command recorded in its own header: uv writes that command
     # into the file, so adding a flag would show up as a diff. The target
-    # Python comes from UV_PYTHON instead, which uv does not record.
+    # Python comes from UV_PYTHON instead, which uv does not record; the step
+    # below exports it from the Dockerfiles.
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -77,13 +90,17 @@ jobs:
             compile: >-
               uv pip compile --generate-hashes
               --output-file requirements.lock requirements.in
-    env:
-      UV_PYTHON: "3.12.14" # keep in step with PYTHON_VERSION above
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Python version of the images
+        id: python
+        run: |
+          version="$(.github/scripts/python-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "UV_PYTHON=${version}" >> "$GITHUB_ENV"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ steps.python.outputs.version }}
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - working-directory: ${{ matrix.dir }}
         run: ${{ matrix.compile }}
