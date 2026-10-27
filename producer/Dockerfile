@@ -14,7 +14,7 @@
 # python:3.12.14-slim-trixie (PYTHON_VERSION=3.12.14 in the image config). CI
 # tests on that version and requirements-dev.lock is compiled for it: update
 # all three together when the Python version changes.
-FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
+FROM python:3.12.15-slim-trixie@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
