@@ -9,8 +9,9 @@ updates:
     schedule:
       interval: weekly
     # Moving to another Python minor or major means recompiling the three
-    # locks and changing PYTHON_VERSION in ci.yml, so it is a decision, not
-    # an automatic bump. Patch and digest updates of 3.12 still arrive.
+    # locks, so it is a decision, not an automatic bump. Patch and digest
+    # updates of 3.12 still arrive and need nothing else: CI reads the version
+    # from the Dockerfiles (.github/scripts/python-version.sh).
     ignore:
       - dependency-name: python
         update-types:
