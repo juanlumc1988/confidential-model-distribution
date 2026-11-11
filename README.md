@@ -39,7 +39,7 @@ The key never travels with the artifact. The Hub carries only ciphertext; the ke
 
 ## Prerequisites
 
-Ubuntu 24.04 LTS — natively, or under WSL2 on Windows 11 — plus a Hugging Face account with a write-scoped access token, roughly 8 GB of free RAM and 20 GB of disk. Docker Engine, kubectl and kind are installed by the setup script.
+Ubuntu 24.04 LTS — natively, or under WSL2 on Windows 10 (22H2) or 11 — plus a Hugging Face account with a write-scoped access token, roughly 8 GB of free RAM and 20 GB of disk. Docker Engine, kubectl and kind are installed by the setup script.
 
 No cloud account and no confidential hardware are required. The cluster is local.
 
@@ -50,7 +50,8 @@ No cloud account and no confidential hardware are required. The cluster is local
 ```bash
 git clone https://github.com/juanlumc1988/confidential-model-distribution.git ~/confidential-model-distribution
 cd ~/confidential-model-distribution
-./setup/setup-dev-env.sh
+./setup/setup-dev-env.sh      # Docker, kubectl, kind; stops once to enable systemd
+./setup/setup-python-dev.sh   # .venv, then lint and the unit tests
 ```
 
 Step-by-step instructions, environment verification and troubleshooting are in **[`setup/README.md`](setup/README.md)**.
@@ -63,7 +64,8 @@ Step-by-step instructions, environment verification and troubleshooting are in *
 .
 ├── setup/
 │   ├── README.md                  Environment setup, verification, troubleshooting
-│   └── setup-dev-env.sh           Idempotent installer for Ubuntu 24.04 / WSL2
+│   ├── setup-dev-env.sh           Idempotent installer for Ubuntu 24.04 / WSL2
+│   └── setup-python-dev.sh        Python dev environment (.venv, lint, tests)
 ├── shared/
 │   └── artifact_format.py         The wire format, defined once for both sides
 ├── producer/
@@ -87,6 +89,15 @@ Step-by-step instructions, environment verification and troubleshooting are in *
 │       ├── consumer-no-key.yaml       Must fail before downloading
 │       ├── consumer-wrong-key.yaml    Must fail at authentication
 │       └── consumer-tamper-check.yaml Intact decrypts, every mutation rejected
+├── tests/                         Unit tests; third-party clients are faked
+├── .github/
+│   ├── workflows/ci.yml           Lint, tests, lock check, manifests, image builds
+│   ├── scripts/python-version.sh  Reads the images' Python version from the Dockerfiles
+│   └── dependabot.yml             Weekly updates for Actions and the base image
+├── .vscode/                       Shared VSCode settings (interpreter, pytest, ruff)
+├── docs/                          Plan for the tests and CI, with its status (Spanish)
+├── requirements-dev.in / .lock    Test and lint tooling, hashed, for Python 3.12
+├── ruff.toml                      Lint and format rules
 ├── .dockerignore
 ├── .gitattributes
 ├── .gitignore
@@ -266,6 +277,31 @@ Clean up afterwards:
 ```bash
 kubectl delete -f manifests/verify/ && kubectl delete secret wrong-model-key
 ```
+
+---
+
+## Development
+
+```bash
+./setup/setup-python-dev.sh        # creates .venv from requirements-dev.lock
+source .venv/bin/activate
+pytest                             # unit tests: no network, cluster or model download
+ruff check . && ruff format --check .
+```
+
+The tests in `tests/` cover the wire format, the consumer's fail-closed paths and the producer. `huggingface_hub`, `kubernetes` and `transformers` are replaced by fakes (`tests/fakes.py`). The two functions they do not execute are `download_artifact` and `load_model`, which need the real libraries and the network; the end-to-end run under [Verify the pipeline](#verify-the-pipeline) exercises them.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
+
+- **lint**: `ruff` and `shellcheck`.
+- **test**: `pytest`, with coverage of at least 90 %.
+- **lock-check**: each `requirements*.lock` must be exactly what its `.in` resolves to.
+- **manifests**: `kubeconform` on `manifests/`.
+- **docker-build**: both images build.
+
+Actions are pinned by commit SHA, and Dependabot proposes updates for them and for the base image. The CI takes the Python version from the `FROM` line of the Dockerfiles (`.github/scripts/python-version.sh`), so a patch update of the base image needs no other change. A new minor version means recompiling the three locks; Dependabot is set not to propose it.
+
+There is no CI job for the end-to-end pipeline: it needs a Hugging Face token and a cluster, so it is run by hand as described above.
 
 ---
 
